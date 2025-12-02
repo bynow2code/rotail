@@ -43,12 +43,12 @@ func tailFile(filePath string) error {
 			}
 
 			line = strings.TrimSpace(line)
-			if line != "" {
+			if len(line) > 0 {
 				fmt.Println(line)
 			}
 
 			if errors.Is(err, io.EOF) {
-				continue
+				break
 			}
 		}
 	}
