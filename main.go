@@ -6,132 +6,41 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 
 	"github.com/fsnotify/fsnotify"
 )
 
-type TailFile struct {
-	FilePath string
-	file     *os.File
-}
-
-type Option func(file *TailFile) error
-
-// WithSeek 设置文件下次读取或写入操作的偏移量
-func WithSeek(offset int64, whence int) Option {
-	return func(tf *TailFile) error {
-		if tf.file == nil {
-			return fmt.Errorf("文件未打开")
-		}
-		_, err := tf.file.Seek(offset, whence)
-		if err != nil {
-			return fmt.Errorf("文件Seek错误: %w", err)
-		}
-		return nil
-	}
-}
-func NewTailFile(filePath string, options ...Option) (*TailFile, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("打开文件错误: %w", err)
-	}
-
-	tf := &TailFile{
-		FilePath: filePath,
-		file:     file,
-	}
-
-	for _, option := range options {
-		if err := option(tf); err != nil {
-			return nil, err
-		}
-	}
-
-	return tf, nil
-}
-
-// Close 关闭文件
-func (tf *TailFile) Close() {
-	_ = tf.file.Close()
-}
-
-// GetFileInfo 获取文件信息
-func (tf *TailFile) GetFileInfo() (os.FileInfo, error) {
-	fileInfo, err := tf.file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("获取文件信息错误: %w", err)
-	}
-	return fileInfo, nil
-}
-
-// GetSize 获取文件大小
-func (tf *TailFile) GetSize() (int64, error) {
-	fileInfo, err := tf.GetFileInfo()
-	if err != nil {
-		return 0, err
-	}
-	return fileInfo.Size(), nil
-}
-
-// Seek 设置文件下次读取或写入操作的偏移量
-func (tf *TailFile) Seek(offset int64, whence int) (int64, error) {
-	ret, err := tf.file.Seek(offset, whence)
-	if err != nil {
-		return 0, fmt.Errorf("文件Seek错误: %w", err)
-	}
-	return ret, nil
-}
-
-func (tf *TailFile) ReaderLines() error {
-	reader := bufio.NewReader(tf.file)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("读取文件错误: %w", err)
-		}
-
-		fmt.Println("行：", line)
-
-		// 最后一行
-		if errors.Is(err, io.EOF) {
-			break
-		}
-	}
-	return nil
-}
-
 func main() {
 	filePath := "test.log"
 
-	watcher, err := fsnotify.NewWatcher()
+	fileMonitor := NewFileMonitor(filePath)
+	err := fileMonitor.Start()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalln(err)
+		return
 	}
-	defer watcher.Close()
-
-	err = watcher.Add(filePath)
-	if err != nil {
-		log.Fatal(err)
-	}
+	defer fileMonitor.Close()
 
 	errCh := make(chan error)
 
 	go func() {
-		tailFile, err := NewTailFile(filePath, WithSeek(0, io.SeekEnd))
+		// 确保文件从末尾开始读取
+		_, err = fileMonitor.File.Seek(0, io.SeekEnd)
 		if err != nil {
-			log.Fatalln(err)
+			errCh <- fmt.Errorf("文件 Seek 错误：%w", err)
 		}
-		defer tailFile.Close()
 
-		lastSize, err := tailFile.GetSize()
+		// 获取文件信息
+		fileInfo, err := fileMonitor.File.Stat()
 		if err != nil {
-			log.Fatalln(err)
+			errCh <- fmt.Errorf("获取文件信息错误: %w", err)
 		}
+		// 获取文件大小
+		lastSize := fileInfo.Size()
 
 		for {
 			select {
-			case event, ok := <-watcher.Events:
+			case event, ok := <-fileMonitor.Watcher.Events:
 				if !ok {
 					return
 				}
@@ -139,15 +48,15 @@ func main() {
 				log.Println("event:", event)
 
 				if event.Has(fsnotify.Write) {
-					if err := handleWriteEvent(tailFile, &lastSize); err != nil {
+					if err := handleWriteEvent(fileMonitor, &lastSize); err != nil {
 						return
 					}
 				}
 
 				if event.Has(fsnotify.Remove) {
-					handleRemoveEvent(errCh, err)
+					handleRemoveEvent(errCh)
 				}
-			case err, ok := <-watcher.Errors:
+			case err, ok := <-fileMonitor.Watcher.Errors:
 				if !ok {
 					return
 				}
@@ -157,37 +66,55 @@ func main() {
 		}
 	}()
 
-	<-errCh
+	err = <-errCh
+	fmt.Println(err)
 }
 
-func handleWriteEvent(tailFile *TailFile, lastSize *int64) error {
-	currSize, err := tailFile.GetSize()
+func handleWriteEvent(fileMonitor *FileMonitor, lastSize *int64) error {
+	// 获取文件信息
+	fileInfo, err := fileMonitor.File.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("获取文件信息错误: %w", err)
 	}
+	// 获取文件大小
+	currSize := fileInfo.Size()
 
+	// 大小不变，无需处理
 	if currSize == *lastSize {
-		// 大小不变，无需处理
 		return nil
 	}
 
+	// 文件被截断
 	if currSize < *lastSize {
-		// 文件被截断
-		if _, err := tailFile.Seek(0, io.SeekStart); err != nil {
+		if _, err := fileMonitor.File.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
 	}
 
-	if err := tailFile.ReaderLines(); err != nil {
-		return err
+	// 读取文件
+	reader := bufio.NewReader(fileMonitor.File)
+	for {
+		// 读取一行
+		line, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("读取文件错误: %w", err)
+		}
+
+		fmt.Println("行：", line)
+
+		// 读到文件末尾
+		if errors.Is(err, io.EOF) {
+			break
+		}
 	}
 
+	// 更新文件大小
 	*lastSize = currSize
 	return nil
 }
 
-func handleRemoveEvent(errCh chan error, err error) {
-	errCh <- fmt.Errorf("文件被删除: %w", err)
+func handleRemoveEvent(errCh chan error) {
+	errCh <- fmt.Errorf("文件被删除")
 }
 
 func handleWatcherError(errCh chan error, err error) {
