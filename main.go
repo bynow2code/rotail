@@ -11,13 +11,20 @@ import (
 )
 
 func main() {
-	filePath := "test.log"
+	//filePath := "test.log"
+	//stopCh := make(chan struct{})
+	//tailFile(filePath, stopCh)
+
+	dirPath := "/Users/changqianqian/GolandProjects/rotail/logs"
+	tailDir(dirPath)
+}
+
+func tailFile(filePath string, stopCh chan struct{}) error {
+	fmt.Println("打开：", filePath)
 
 	fileMonitor := NewFileMonitor(filePath)
-	err := fileMonitor.Start()
-	if err != nil {
-		log.Fatalln(err)
-		return
+	if err := fileMonitor.Start(); err != nil {
+		return err
 	}
 	defer fileMonitor.Close()
 
@@ -25,21 +32,27 @@ func main() {
 
 	go func() {
 		// 确保文件从末尾开始读取
-		_, err = fileMonitor.File.Seek(0, io.SeekEnd)
+		_, err := fileMonitor.File.Seek(0, io.SeekEnd)
 		if err != nil {
 			errCh <- fmt.Errorf("文件 Seek 错误：%w", err)
+			return
 		}
 
 		// 获取文件信息
 		fileInfo, err := fileMonitor.File.Stat()
 		if err != nil {
 			errCh <- fmt.Errorf("获取文件信息错误: %w", err)
+			return
 		}
 		// 获取文件大小
 		lastSize := fileInfo.Size()
 
 		for {
 			select {
+			case <-stopCh:
+				fmt.Println("退出：", filePath)
+				fileMonitor.Close()
+				return
 			case event, ok := <-fileMonitor.Watcher.Events:
 				if !ok {
 					return
@@ -49,6 +62,7 @@ func main() {
 
 				if event.Has(fsnotify.Write) {
 					if err := handleWriteEvent(fileMonitor, &lastSize); err != nil {
+						errCh <- err
 						return
 					}
 				}
@@ -66,8 +80,8 @@ func main() {
 		}
 	}()
 
-	err = <-errCh
-	fmt.Println(err)
+	err := <-errCh
+	return err
 }
 
 func handleWriteEvent(fileMonitor *FileMonitor, lastSize *int64) error {
@@ -110,6 +124,7 @@ func handleWriteEvent(fileMonitor *FileMonitor, lastSize *int64) error {
 
 	// 更新文件大小
 	*lastSize = currSize
+
 	return nil
 }
 

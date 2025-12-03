@@ -9,26 +9,10 @@ import (
 )
 
 type FileMonitor struct {
+	mu      sync.Mutex
 	Path    string
 	File    *os.File
 	Watcher *fsnotify.Watcher
-	mu      sync.Mutex
-}
-
-type Option func(file *FileMonitor) error
-
-// WithSeek 设置文件下次读取或写入操作的偏移量
-func WithSeek(offset int64, whence int) Option {
-	return func(fm *FileMonitor) error {
-		if fm.File == nil {
-			return fmt.Errorf("文件未打开")
-		}
-		_, err := fm.File.Seek(offset, whence)
-		if err != nil {
-			return fmt.Errorf("文件Seek错误: %w", err)
-		}
-		return nil
-	}
 }
 
 // NewFileMonitor 创建文件监控器
@@ -44,7 +28,7 @@ func (fm *FileMonitor) Start() error {
 	defer fm.mu.Unlock()
 
 	if fm.File != nil || fm.Watcher != nil {
-		return fmt.Errorf("监控器重复启动！")
+		return fmt.Errorf("监控器重复启动")
 	}
 
 	var err error
