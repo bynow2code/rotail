@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,25 +10,21 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-type DMOption func(m *DirMonitor) error
-
-func WithExt(ext []string) DMOption {
-	return func(m *DirMonitor) error {
-		m.Ext = ext
-		return nil
-	}
-}
-
 type DirMonitor struct {
-	mu      sync.Mutex
-	Path    string
-	Ext     []string
-	Watcher *fsnotify.Watcher
+	mu        sync.Mutex
+	Path      string
+	Ext       []string
+	Watcher   *fsnotify.Watcher
+	ErrCh     chan error
+	RotateSig chan struct{}
 }
 
+// NewDirMonitor 创建目录监控器
 func NewDirMonitor(path string, opts ...DMOption) (*DirMonitor, error) {
 	dm := &DirMonitor{
-		Path: path,
+		Path:      path,
+		ErrCh:     make(chan error),
+		RotateSig: make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -39,6 +34,16 @@ func NewDirMonitor(path string, opts ...DMOption) (*DirMonitor, error) {
 	}
 
 	return dm, nil
+}
+
+type DMOption func(m *DirMonitor) error
+
+// WithExt 根据设置的文件拓展名筛选日志
+func WithExt(ext []string) DMOption {
+	return func(m *DirMonitor) error {
+		m.Ext = ext
+		return nil
+	}
 }
 
 // Start 启动监控器
@@ -88,10 +93,11 @@ func (dm *DirMonitor) Close() {
 	dm.Cleanup()
 }
 
-func (dm *DirMonitor) FindLastMatchEntry() (os.DirEntry, error) {
+// FindLastMatchEntry 取目录(字典倒叙排列)中复合条件文件的第一个
+func (dm *DirMonitor) FindLastMatchEntry() (string, error) {
 	dirEntries, err := os.ReadDir(dm.Path)
 	if err != nil {
-		return nil, fmt.Errorf("获取目录下的文件失败: %w", err)
+		return "", fmt.Errorf("获取目录下的文件失败: %w", err)
 	}
 
 	// 倒序遍历目录下的文件
@@ -100,48 +106,48 @@ func (dm *DirMonitor) FindLastMatchEntry() (os.DirEntry, error) {
 		if entry.IsDir() {
 			continue
 		}
-		fileExt := filepath.Ext(entry.Name())
-		if slices.Contains(dm.Ext, fileExt) {
-			return entry, nil
+
+		// 判断文件拓展名
+		if !slices.Contains(dm.Ext, filepath.Ext(entry.Name())) {
+			continue
 		}
+
+		return filepath.Join(dm.Path, entry.Name()), nil
 	}
 
-	return nil, fmt.Errorf("没有找到指定扩展名的文件")
+	return "", fmt.Errorf("没有找到指定扩展名的文件")
 }
 
 func tailDir(dirPath string) error {
-	dirMonitor, err := NewDirMonitor(dirPath, WithExt([]string{".log"}))
+	// 创建目录监控器
+	monitor, err := NewDirMonitor(dirPath, WithExt([]string{".log"}))
 	if err != nil {
 		return err
 	}
 
-	if err = dirMonitor.Start(); err != nil {
+	// 启动监控器
+	if err = monitor.Start(); err != nil {
 		return err
 	}
 
-	errCh := make(chan error)
-	stopCh := make(chan struct{})
-
-	entry, err := dirMonitor.FindLastMatchEntry()
+	// 获取目录下的文件
+	filePath, err := monitor.FindLastMatchEntry()
 	if err != nil {
 		return err
 	}
-	filePath := filepath.Join(dirPath, entry.Name())
-	go tailFile(filePath, stopCh)
+
+	go tailFile(filePath, monitor.RotateSig)
 
 	go func() {
 		for {
 			select {
-			case event, ok := <-dirMonitor.Watcher.Events:
+			case event, ok := <-monitor.Watcher.Events:
 				if !ok {
 					return
 				}
 
-				log.Println("event:", event)
-
 				if event.Has(fsnotify.Create) {
-					filePath := event.Name
-					fileInfo, err := os.Stat(filePath)
+					fileInfo, err := os.Stat(event.Name)
 					if err != nil {
 						continue
 					}
@@ -150,25 +156,24 @@ func tailDir(dirPath string) error {
 						continue
 					}
 
-					fileExt := filepath.Ext(filePath)
-					if !slices.Contains(dirMonitor.Ext, fileExt) {
+					fileExt := filepath.Ext(event.Name)
+					if !slices.Contains(monitor.Ext, fileExt) {
 						continue
 					}
 
-					stopCh <- struct{}{}
+					monitor.RotateSig <- struct{}{}
 
-					go tailFile(filePath, stopCh)
+					go tailFile(filePath, monitor.RotateSig)
 				}
-			case err, ok := <-dirMonitor.Watcher.Errors:
+			case err, ok := <-monitor.Watcher.Errors:
 				if !ok {
 					return
 				}
 
-				log.Println("error:", err)
+				monitor.ErrCh <- fmt.Errorf("监控目录错误: %w", err)
 			}
 		}
 	}()
 
-	err = <-errCh
-	return err
+	return <-monitor.ErrCh
 }
