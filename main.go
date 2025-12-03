@@ -91,7 +91,7 @@ func (tf *TailFile) ReaderLines() error {
 			return fmt.Errorf("读取文件错误: %w", err)
 		}
 
-		fmt.Println(line)
+		fmt.Println("行：", line)
 
 		// 最后一行
 		if errors.Is(err, io.EOF) {
@@ -157,13 +157,13 @@ func main() {
 		}
 	}()
 
-	<-make(chan struct{})
+	<-errCh
 }
 
 func handleWriteEvent(tailFile *TailFile, lastSize *int64) error {
 	currSize, err := tailFile.GetSize()
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	if currSize == *lastSize {
