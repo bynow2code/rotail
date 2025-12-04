@@ -1,10 +1,32 @@
 package main
 
-func main() {
-	//filePath := "test.log"
-	//stopCh := make(chan struct{})
-	//tailFile(filePath, stopCh)
+import (
+	"fmt"
+)
 
-	dirPath := "/Users/changqianqian/GolandProjects/rotail/logs"
-	tailDir(dirPath)
+func main() {
+	filePath := "test.log"
+
+	t := NewFileTailer(filePath)
+	if err := t.Start(); err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer t.Close()
+
+	for {
+		select {
+		case line, ok := <-t.LineCh:
+			if !ok {
+				return
+			}
+			fmt.Println(line)
+		case err, ok := <-t.ErrCh:
+			if !ok {
+				return
+			}
+			fmt.Println(err)
+			return
+		}
+	}
 }
