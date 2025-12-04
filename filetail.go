@@ -107,13 +107,15 @@ func (t *FileTailer) run() {
 			}
 
 			if event.Op&(fsnotify.Create|fsnotify.Rename|fsnotify.Remove) != 0 {
+				time.Sleep(5 * time.Second)
+
 				if err := t.handleRotate(); err != nil {
 					t.ErrCh <- err
 					return
 				}
 
 				// 短暂休眠等待写入方重建文件
-				time.Sleep(1000 * time.Millisecond)
+				time.Sleep(100 * time.Millisecond)
 
 				t.readLines()
 			}
@@ -140,6 +142,11 @@ func (t *FileTailer) handleRotate() error {
 	}
 	t.size = fi.Size()
 	t.lastSize = t.size
+
+	_ = t.watcher.Remove(t.path)
+	if err := t.watcher.Add(t.path); err != nil {
+		return err
+	}
 
 	return nil
 }
