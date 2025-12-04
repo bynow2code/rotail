@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -95,8 +94,6 @@ func (t *FileTailer) run() {
 			if !ok {
 				return
 			}
-			fmt.Println(event)
-
 			if event.Has(fsnotify.Write) {
 				if err := t.handleFileTruncation(); err != nil {
 					t.ErrCh <- err
@@ -107,8 +104,6 @@ func (t *FileTailer) run() {
 			}
 
 			if event.Op&(fsnotify.Create|fsnotify.Rename|fsnotify.Remove) != 0 {
-				time.Sleep(5 * time.Second)
-
 				if err := t.handleRotate(); err != nil {
 					t.ErrCh <- err
 					return
