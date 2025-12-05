@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -19,6 +20,8 @@ type FileTailer struct {
 	lastSize int64
 	LineCh   chan string
 	ErrCh    chan error
+	stopCh   chan struct{}
+	wg       sync.WaitGroup
 }
 
 func NewFileTailer(path string) *FileTailer {
@@ -30,6 +33,21 @@ func NewFileTailer(path string) *FileTailer {
 }
 
 func (t *FileTailer) Start() error {
+	var err error
+	defer func() {
+		if err != nil {
+			if t.watcher != nil {
+				_ = t.watcher.Close()
+				t.watcher = nil
+			}
+
+			if t.file != nil {
+				_ = t.file.Close()
+				t.file = nil
+			}
+		}
+	}()
+
 	f, err := os.Open(t.path)
 	if err != nil {
 		return err
@@ -38,8 +56,6 @@ func (t *FileTailer) Start() error {
 
 	fi, err := t.file.Stat()
 	if err != nil {
-		_ = f.Close()
-		t.file = nil
 		return err
 	}
 	t.size = fi.Size()
@@ -47,17 +63,11 @@ func (t *FileTailer) Start() error {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		_ = f.Close()
-		t.file = nil
 		return err
 	}
 	t.watcher = watcher
 
 	if err = watcher.Add(t.path); err != nil {
-		_ = t.file.Close()
-		t.file = nil
-		_ = t.watcher.Close()
-		t.watcher = nil
 		return err
 	}
 
@@ -66,7 +76,18 @@ func (t *FileTailer) Start() error {
 	return nil
 }
 
+func (t *FileTailer) Stop() {
+	select {
+	case <-t.stopCh:
+	default:
+		close(t.stopCh)
+		t.wg.Wait()
+	}
+}
+
 func (t *FileTailer) run() {
+	defer t.wg.Done()
+
 	defer func() {
 		if t.watcher != nil {
 			_ = t.watcher.Close()
@@ -78,7 +99,6 @@ func (t *FileTailer) run() {
 		}
 
 		close(t.LineCh)
-		close(t.ErrCh)
 	}()
 
 	if _, err := t.file.Seek(0, io.SeekEnd); err != nil {
