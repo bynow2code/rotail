@@ -29,6 +29,7 @@ func NewFileTailer(path string) *FileTailer {
 		path:   path,
 		LineCh: make(chan string),
 		ErrCh:  make(chan error),
+		stopCh: make(chan struct{}),
 	}
 }
 
