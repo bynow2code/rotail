@@ -72,6 +72,7 @@ func (t *FileTailer) Start() error {
 		return err
 	}
 
+	t.wg.Add(1)
 	go t.run()
 
 	return nil
@@ -125,13 +126,13 @@ func (t *FileTailer) run() {
 			}
 
 			if event.Op&(fsnotify.Create|fsnotify.Rename|fsnotify.Remove) != 0 {
+				// 短暂休眠等待写入方重建文件
+				time.Sleep(100 * time.Millisecond)
+
 				if err := t.handleRotate(); err != nil {
 					t.ErrCh <- err
 					return
 				}
-
-				// 短暂休眠等待写入方重建文件
-				time.Sleep(100 * time.Millisecond)
 
 				t.readLines()
 			}
