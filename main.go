@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"strings"
@@ -28,14 +27,16 @@ func main() {
 	case *file != "":
 		t, err := tail.NewFile(*file)
 		if err != nil {
-			log.Fatalln(err)
+			fmt.Printf("Exited due to error: %v\n", err)
+			return
 		}
 		runTailer(t)
 	case *dir != "":
 		exts := strings.Split(*ext, ",")
 		t, err := tail.NewDir(*dir, tail.WithExt(exts))
 		if err != nil {
-			log.Fatalln(err)
+			fmt.Printf("Exited due to error: %v\n", err)
+			return
 		}
 		runTailer(t)
 	default:
@@ -45,7 +46,8 @@ func main() {
 
 func runTailer(t tail.Tailer) {
 	if err := t.Start(); err != nil {
-		log.Fatalln(err)
+		fmt.Printf("Exited due to error: %v\n", err)
+		return
 	}
 
 	go func() {
