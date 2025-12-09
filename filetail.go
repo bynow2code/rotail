@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"io"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -136,6 +135,7 @@ func (t *FileTailer) run() {
 			if !ok {
 				return
 			}
+
 			if event.Has(fsnotify.Write) {
 				if err := t.handleFileTruncation(); err != nil {
 					t.ErrCh <- err
@@ -160,18 +160,21 @@ func (t *FileTailer) run() {
 			if !ok {
 				return
 			}
-			log.Println("error:", err)
+
+			t.ErrCh <- err
+			return
 		}
 	}
 }
 
 func (t *FileTailer) handleRotate() error {
-	f, err := os.Open(t.path)
+	var err error
+
+	_ = t.file.Close()
+	t.file, err = os.Open(t.path)
 	if err != nil {
 		return err
 	}
-	_ = t.file.Close()
-	t.file = f
 
 	fi, err := t.file.Stat()
 	if err != nil {
@@ -181,7 +184,7 @@ func (t *FileTailer) handleRotate() error {
 	t.lastSize = t.size
 
 	_ = t.watcher.Remove(t.path)
-	if err := t.watcher.Add(t.path); err != nil {
+	if err = t.watcher.Add(t.path); err != nil {
 		return err
 	}
 
