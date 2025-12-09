@@ -153,7 +153,10 @@ func (t *FileTailer) run() {
 	}
 
 	// 读取文件内容
-	t.readLines()
+	if err := t.readLines(); err != nil {
+		t.errCh <- err
+		return
+	}
 
 	for {
 		select {
@@ -170,14 +173,20 @@ func (t *FileTailer) run() {
 
 			// 处理文件写入
 			if event.Has(fsnotify.Write) {
-				t.handleWriteEvent(event)
+				if err := t.handleWrite(event); err != nil {
+					t.errCh <- err
+					return
+				}
 			}
 
 			// 处理文件轮转
 			if event.Op&(fsnotify.Create|fsnotify.Rename|fsnotify.Remove) != 0 {
 				// 等待写入方重建文件
 				time.Sleep(100 * time.Millisecond)
-				t.handleRotate()
+				if err := t.handleRotate(); err != nil {
+					t.errCh <- err
+					return
+				}
 			}
 
 		// 监听错误
@@ -191,56 +200,6 @@ func (t *FileTailer) run() {
 	}
 }
 
-// handleWriteEvent 处理文件写入
-func (t *FileTailer) handleWriteEvent(event fsnotify.Event) {
-	// 处理文件截断
-	if err := t.handleFileTruncation(); err != nil {
-		t.errCh <- err
-		return
-	}
-
-	// 读取文件内容
-	t.readLines()
-}
-
-// handleRotate 处理文件轮转
-func (t *FileTailer) handleRotate() {
-	// 关闭文件句柄
-	if err := t.file.Close(); err != nil {
-		t.errCh <- err
-		return
-	}
-
-	// 打开文件
-	file, err := os.Open(t.path)
-	if err != nil {
-		t.errCh <- err
-		return
-	}
-	t.file = file
-
-	// 获取文件大小
-	fi, err := t.file.Stat()
-	if err != nil {
-		t.errCh <- err
-		return
-	}
-	t.size = fi.Size()
-	t.lastSize = t.size
-
-	// 添加文件监控
-	_ = t.watcher.Remove(t.path)
-	if err = t.watcher.Add(t.path); err != nil {
-		t.errCh <- err
-		return
-	}
-
-	// 读取文件内容
-	t.readLines()
-
-	return
-}
-
 // handleFileTruncation 处理文件截断
 func (t *FileTailer) handleFileTruncation() error {
 	// 获取文件大小
@@ -252,7 +211,6 @@ func (t *FileTailer) handleFileTruncation() error {
 	// 文件被截断
 	curSize := fi.Size()
 	if curSize < t.lastSize {
-
 		fmt.Printf("%sFile truncated:%s\n%s", colorYellow, t.path, colorReset)
 
 		if _, err := t.file.Seek(0, io.SeekStart); err != nil {
@@ -266,8 +224,59 @@ func (t *FileTailer) handleFileTruncation() error {
 	return nil
 }
 
+// handleWrite 处理文件写入
+func (t *FileTailer) handleWrite(event fsnotify.Event) error {
+	// 处理文件截断
+	if err := t.handleFileTruncation(); err != nil {
+		return err
+	}
+
+	// 读取文件内容
+	if err := t.readLines(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// handleRotate 处理文件轮转
+func (t *FileTailer) handleRotate() error {
+	// 关闭文件句柄
+	if err := t.file.Close(); err != nil {
+		return err
+	}
+
+	// 打开文件
+	file, err := os.Open(t.path)
+	if err != nil {
+		return err
+	}
+	t.file = file
+
+	// 获取文件大小
+	fi, err := t.file.Stat()
+	if err != nil {
+		return err
+	}
+	t.size = fi.Size()
+	t.lastSize = t.size
+
+	// 添加文件监控
+	_ = t.watcher.Remove(t.path)
+	if err = t.watcher.Add(t.path); err != nil {
+		return err
+	}
+
+	// 读取文件内容
+	if err := t.readLines(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // readLines 读取文件内容
-func (t *FileTailer) readLines() {
+func (t *FileTailer) readLines() error {
 	reader := bufio.NewReader(t.file)
 
 	for {
@@ -275,8 +284,7 @@ func (t *FileTailer) readLines() {
 		line, err := reader.ReadString('\n')
 
 		if err != nil && !errors.Is(err, io.EOF) {
-			t.errCh <- err
-			return
+			return err
 		}
 
 		// 发送新行
@@ -290,6 +298,8 @@ func (t *FileTailer) readLines() {
 			break
 		}
 	}
+
+	return nil
 }
 
 // GetLineCh 获取行通道
