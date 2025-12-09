@@ -80,6 +80,17 @@ func (t *DirTailer) Start() error {
 
 	fmt.Printf("%sStarting dir tailer......%s\n%s", ColorGreen, t.path, ColorReset)
 
+	// 获取目录信息
+	fi, err := os.Stat(t.path)
+	if err != nil {
+		return err
+	}
+
+	// 检查目录
+	if !fi.IsDir() {
+		return fmt.Errorf("%s is not a directory", t.path)
+	}
+
 	// 获取绝对路径
 	if !filepath.IsAbs(t.path) {
 		var absPath string
