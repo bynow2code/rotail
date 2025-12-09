@@ -113,6 +113,7 @@ func (t *DirTailer) run() {
 		// 停止文件尾随器
 		if t.ft != nil {
 			t.ft.Stop()
+			t.ft = nil
 		}
 
 		// 关闭 watcher
@@ -133,7 +134,6 @@ func (t *DirTailer) run() {
 
 		// 停止信号
 		case <-t.stopCh:
-			t.ft.Stop()
 			return
 
 		// 监听事件
