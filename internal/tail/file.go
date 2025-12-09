@@ -251,10 +251,12 @@ func (t *FileTailer) cleanup() {
 		_ = t.watcher.Close()
 		t.watcher = nil
 	}
+
 	if t.file != nil {
 		_ = t.file.Close()
 		t.file = nil
 	}
+
 	close(t.lineCh)
 	close(t.errCh)
 }
