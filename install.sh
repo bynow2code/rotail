@@ -56,7 +56,7 @@ if [ "$OS" = "macos" ] || [ "$OS" = "linux" ]; then
     chmod +x "$TMPFILE"
     sudo mv "$TMPFILE" /usr/local/bin/rotail
     echo "安装完成: /usr/local/bin/rotail"
-    rotail --version
+    rotail -h
 else
     # Windows: 放到用户 bin 目录
     TARGET="$HOME/bin/rotail.exe"
