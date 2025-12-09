@@ -18,18 +18,40 @@ type FileTailer struct {
 	watcher  *fsnotify.Watcher
 	size     int64
 	lastSize int64
+	offset   int64
+	whence   int
 	LineCh   chan string
 	ErrCh    chan error
 	stopCh   chan struct{}
 	wg       sync.WaitGroup
 }
 
-func NewFileTailer(path string) *FileTailer {
-	return &FileTailer{
+func NewFileTailer(path string, opts ...FTOption) (*FileTailer, error) {
+	t := &FileTailer{
 		path:   path,
+		offset: 0,
+		whence: io.SeekEnd,
 		LineCh: make(chan string),
 		ErrCh:  make(chan error),
 		stopCh: make(chan struct{}),
+	}
+
+	for _, opt := range opts {
+		if err := opt(t); err != nil {
+			return nil, err
+		}
+	}
+
+	return t, nil
+}
+
+type FTOption func(tailer *FileTailer) error
+
+func WithSeek(offset int64, whence int) FTOption {
+	return func(t *FileTailer) error {
+		t.offset = offset
+		t.whence = whence
+		return nil
 	}
 }
 
@@ -49,11 +71,10 @@ func (t *FileTailer) Start() error {
 		}
 	}()
 
-	f, err := os.Open(t.path)
+	t.file, err = os.Open(t.path)
 	if err != nil {
 		return err
 	}
-	t.file = f
 
 	fi, err := t.file.Stat()
 	if err != nil {
@@ -62,13 +83,12 @@ func (t *FileTailer) Start() error {
 	t.size = fi.Size()
 	t.lastSize = t.size
 
-	watcher, err := fsnotify.NewWatcher()
+	t.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		return err
 	}
-	t.watcher = watcher
 
-	if err = watcher.Add(t.path); err != nil {
+	if err = t.watcher.Add(t.path); err != nil {
 		return err
 	}
 
@@ -103,7 +123,7 @@ func (t *FileTailer) run() {
 		close(t.LineCh)
 	}()
 
-	if _, err := t.file.Seek(0, io.SeekEnd); err != nil {
+	if _, err := t.file.Seek(t.offset, t.whence); err != nil {
 		t.ErrCh <- err
 		return
 	}
