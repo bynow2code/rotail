@@ -1,6 +1,7 @@
 package tail
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,16 +12,18 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+var ErrNotFoundFile = errors.New("file not found")
+
 type DirTailer struct {
-	path     string
-	ext      []string
-	ft       *FileTailer
-	watcher  *fsnotify.Watcher
-	lineCh   chan string
-	errCh    chan error
-	stopCh   chan struct{}
-	wg       sync.WaitGroup
-	stopOnce sync.Once
+	path       string
+	ext        []string
+	fileTailer *FileTailer
+	watcher    *fsnotify.Watcher
+	lineCh     chan string
+	errCh      chan error
+	stopCh     chan struct{}
+	wg         sync.WaitGroup
+	stopOnce   sync.Once
 }
 
 // NewDir 创建一个目录跟踪器
@@ -79,6 +82,7 @@ func (t *DirTailer) Start() error {
 	t.watcher = watcher
 
 	if err = t.watcher.Add(t.path); err != nil {
+		t.cleanup()
 		return err
 	}
 
@@ -94,10 +98,7 @@ func (t *DirTailer) run() {
 	defer t.cleanup()
 
 	// 监听目录内文件
-	if err := t.tailFileInDir(); err != nil {
-		t.errCh <- err
-		return
-	}
+	go t.tailFileInDir()
 
 	for {
 		select {
@@ -109,10 +110,7 @@ func (t *DirTailer) run() {
 			}
 
 			if event.Has(fsnotify.Create) {
-				if err := t.handleCreateEvent(event); err != nil {
-					t.errCh <- err
-					return
-				}
+				t.handleCreateEvent(event)
 			}
 
 			if event.Op&(fsnotify.Rename|fsnotify.Remove) != 0 {
@@ -132,25 +130,23 @@ func (t *DirTailer) run() {
 }
 
 // handleCreateEvent 处理新文件
-func (t *DirTailer) handleCreateEvent(event fsnotify.Event) error {
+func (t *DirTailer) handleCreateEvent(event fsnotify.Event) {
 	// 检查文件后缀
 	ext := filepath.Ext(event.Name)
 	if !slices.Contains(t.ext, ext) {
-		return nil
+		return
 	}
 
-	return t.tailFileInDir()
+	go t.tailFileInDir()
 }
 
 // findLastFileInDir 获取最新文件
-func (t *DirTailer) findLastFileInDir() ([]string, error) {
+func (t *DirTailer) findLastFileInDir() (string, error) {
 	entries, err := os.ReadDir(t.path)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	var files []string
-	// 倒序遍历
 	for i := len(entries) - 1; i >= 0; i-- {
 		entry := entries[i]
 
@@ -162,72 +158,64 @@ func (t *DirTailer) findLastFileInDir() ([]string, error) {
 		// 匹配文件后缀
 		ext := filepath.Ext(entry.Name())
 		if slices.Contains(t.ext, ext) {
-			files = append(files, filepath.Join(t.path, entry.Name()))
-			break
+			return filepath.Join(t.path, entry.Name()), nil
 		}
 	}
 
-	return files, nil
+	return "", ErrNotFoundFile
 }
 
 // tailFileInDir 启动最新文件跟踪
-func (t *DirTailer) tailFileInDir() error {
-	files, err := t.findLastFileInDir()
-	if err != nil {
-		return err
-	}
-
-	// 目录里暂时没有匹配文件，等下一次创建
-	if len(files) == 0 {
-		return nil
-	}
-
-	var opts []FTOption
-
-	if t.ft != nil {
-		t.ft.Stop()
-		t.ft = nil
-		// 调整文件偏移量
-		opts = append(opts, WithSeek(0, io.SeekStart))
-	}
-
-	// 创建新的文件跟踪器
-	ft, err := NewFile(files[0], opts...)
-	if err != nil {
-		return err
-	}
-	t.ft = ft
-
-	t.wg.Add(1)
-	go t.tailFile()
-
-	return nil
-}
-
-// tailFile 监听单个文件
-func (t *DirTailer) tailFile() {
-	defer t.wg.Done()
-
-	if err := t.ft.Start(); err != nil {
+func (t *DirTailer) tailFileInDir() {
+	file, err := t.findLastFileInDir()
+	if err != nil && !errors.Is(err, ErrNotFoundFile) {
 		t.errCh <- err
 		return
 	}
 
-	for {
-		select {
-		case <-t.stopCh:
-			t.ft.Stop()
-		case line, ok := <-t.ft.GetLineCh():
-			if !ok {
-				return
-			}
+	// 目录里暂时没有匹配文件，等下一次创建
+	if file == "" {
+		return
+	}
+
+	var opts []FTOption
+
+	if t.fileTailer != nil {
+		t.fileTailer.Stop()
+		t.fileTailer = nil
+		// 调整文件偏移量
+		opts = append(opts, WithSeek(0, io.SeekStart))
+	}
+
+	// 创建文件跟踪器
+	fileTailer, err := NewFile(file, opts...)
+	if err != nil {
+		t.errCh <- err
+		return
+	}
+	t.fileTailer = fileTailer
+
+	if err := t.fileTailer.Start(); err != nil {
+		t.errCh <- err
+		return
+	}
+
+	go func() {
+		for line := range t.fileTailer.GetLineCh() {
 			t.lineCh <- line
-		case err, ok := <-t.ft.errCh:
-			if !ok {
-				return
-			}
-			t.errCh <- err
 		}
+	}()
+
+	select {
+	case <-t.stopCh:
+		t.fileTailer.Stop()
+		return
+	case err, ok := <-t.fileTailer.errCh:
+		if !ok {
+			return
+		}
+		t.errCh <- err
+		return
 	}
 }
 
@@ -259,9 +247,9 @@ func (t *DirTailer) Stop() {
 
 // cleanup 清理资源
 func (t *DirTailer) cleanup() {
-	if t.ft != nil {
-		t.ft.Stop()
-		t.ft = nil
+	if t.fileTailer != nil {
+		t.fileTailer.Stop()
+		t.fileTailer = nil
 	}
 
 	if t.watcher != nil {
