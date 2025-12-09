@@ -63,7 +63,7 @@ func NewFile(path string, opts ...FTOption) (*FileTailer, error) {
 // FTOption 文件跟踪器配置项
 type FTOption func(tailer *FileTailer) error
 
-// WithSeek 设置文件读取位置
+// WithSeek 设置文件偏移量
 func WithSeek(offset int64, whence int) FTOption {
 	return func(t *FileTailer) error {
 		t.offset = offset
@@ -146,7 +146,7 @@ func (t *FileTailer) run() {
 		close(t.lineCh)
 	}()
 
-	// 改变文件偏移量
+	// 调整文件偏移量
 	if _, err := t.file.Seek(t.offset, t.whence); err != nil {
 		t.errCh <- err
 		return
@@ -213,6 +213,7 @@ func (t *FileTailer) handleFileTruncation() error {
 	if curSize < t.lastSize {
 		fmt.Printf("%sFile truncated:%s\n%s", colorYellow, t.path, colorReset)
 
+		// 调整文件偏移量
 		if _, err := t.file.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
@@ -283,8 +284,10 @@ func (t *FileTailer) readLines() error {
 		// 读取一行
 		line, err := reader.ReadString('\n')
 
-		if err != nil && !errors.Is(err, io.EOF) {
-			return err
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				return err
+			}
 		}
 
 		// 发送新行

@@ -86,12 +86,11 @@ func (t *DirTailer) Start() error {
 		return err
 	}
 
-	// 检查目录
 	if !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory", t.path)
 	}
 
-	// 获取绝对路径
+	// 设置绝对路径
 	if !filepath.IsAbs(t.path) {
 		var absPath string
 		absPath, err = filepath.Abs(t.path)
@@ -139,8 +138,12 @@ func (t *DirTailer) run() {
 		close(t.lineCh)
 	}()
 
-	// 寻找并开始监听文件
-	t.findAndTailFile()
+	// 监听目录内文件
+	err := t.tailFileInDir()
+	if err != nil {
+		t.errCh <- err
+		return
+	}
 
 	for {
 		select {
@@ -157,12 +160,18 @@ func (t *DirTailer) run() {
 
 			// 处理目录内创建事件
 			if event.Has(fsnotify.Create) {
-				t.findAndTailFile()
+				if err := t.handleCreateEvent(event); err != nil {
+					t.errCh <- err
+					return
+				}
 			}
 
 			// 处理目录更改
 			if event.Op&(fsnotify.Rename|fsnotify.Remove) != 0 {
-				t.handleDirChangeEvent(event)
+				if err := t.handleChangeEvent(event); err != nil {
+					t.errCh <- err
+					return
+				}
 			}
 
 		// 监听错误
@@ -176,47 +185,66 @@ func (t *DirTailer) run() {
 	}
 }
 
-// findAndTailFile 寻找并开始监听文件
-func (t *DirTailer) findAndTailFile() {
-	// 查找文件
-	file, err := t.findFileInDir()
-	if err != nil && !errors.Is(err, ErrNoFoundFile) {
-		t.errCh <- err
-		return
+// handleCreateEvent 处理目录内文件创建事件
+func (t *DirTailer) handleCreateEvent(event fsnotify.Event) error {
+	// 文件后缀不匹配
+	ext := filepath.Ext(event.Name)
+	if !slices.Contains(t.ext, ext) {
+		return nil
 	}
-	// 文件不存在
-	if file == "" {
-		return
+
+	// 监听目录内文件
+	if err := t.tailFileInDir(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// tailFileInDir 监听目录内文件
+func (t *DirTailer) tailFileInDir() error {
+	// 查找目录内最新文件
+	file, err := t.findLastFileInDir()
+	if err != nil {
+		if !errors.Is(err, ErrNoFoundFile) {
+			return err
+		}
+	}
+	// 目录内没有符合的文件
+	if errors.Is(err, ErrNoFoundFile) {
+		return nil
 	}
 
 	var opts []FTOption
 
-	// 停止文件跟踪器
+	// 停止上一个文件跟踪器
 	if t.ft != nil {
-		// 文件路径相同
-		if t.ft.path == file {
-			return
-		}
-		// 停止文件跟踪器
 		t.ft.Stop()
 		t.ft = nil
-		// 重置文件偏移量
+		// 调整文件偏移量
 		opts = append(opts, WithSeek(0, io.SeekStart))
 	}
 
-	// 创建文件跟踪器
+	// 创建新的文件跟踪器
 	ft, err := NewFile(file, opts...)
 	if err != nil {
-		t.errCh <- err
-		return
+		return err
 	}
 	t.ft = ft
 
 	go t.tailFile()
+
+	return nil
 }
 
 // tailFile 监听文件
 func (t *DirTailer) tailFile() {
+	defer func() {
+		if t.ft != nil {
+			t.ft = nil
+		}
+	}()
+
 	// 启动文件跟踪器
 	if err := t.ft.Start(); err != nil {
 		t.errCh <- err
@@ -242,16 +270,16 @@ func (t *DirTailer) tailFile() {
 	}
 }
 
-// handleDirChangeEvent 处理目录更改事件
-func (t *DirTailer) handleDirChangeEvent(event fsnotify.Event) {
+// handleChangeEvent 处理目录更改事件
+func (t *DirTailer) handleChangeEvent(event fsnotify.Event) error {
 	if event.Name == t.path {
-		t.errCh <- fmt.Errorf("the directory has been moved:%s", event.Name)
-		return
+		return fmt.Errorf("the directory has been moved:%s", event.Name)
 	}
+	return nil
 }
 
-// findFileInDir 寻找目录下符合条件的文件
-func (t *DirTailer) findFileInDir() (string, error) {
+// findLastFileInDir 查找目录内最新文件
+func (t *DirTailer) findLastFileInDir() (string, error) {
 	// 读取目录下的文件
 	entries, err := os.ReadDir(t.path)
 	if err != nil {
