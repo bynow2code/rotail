@@ -100,6 +100,9 @@ func (t *DirTailer) run() {
 
 	for {
 		select {
+		case <-t.stopCh:
+			t.ft.Stop()
+			return
 		case event, ok := <-t.watcher.Events:
 			if !ok {
 				return
@@ -115,7 +118,6 @@ func (t *DirTailer) run() {
 				//	t.ErrCh <- err
 				//	return
 				//}
-
 			}
 		case err, ok := <-t.watcher.Errors:
 			if !ok {
@@ -207,6 +209,9 @@ func (t *DirTailer) handleCreateEvent(event fsnotify.Event) {
 	}()
 
 	return
+}
+
+func (t *DirTailer) handleChangeEvent(event fsnotify.Event) {
 }
 
 func (t *DirTailer) findFileInDir() (string, error) {
