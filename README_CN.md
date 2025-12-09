@@ -1,4 +1,8 @@
+[English version](README.md) | [中文版](README_CN.md)
+
 # rotail
+
+[![Release](https://github.com/bynow2code/rotail/actions/workflows/release.yml/badge.svg)](https://github.com/bynow2code/rotail/actions/workflows/release.yml)
 
 ## 简介
 

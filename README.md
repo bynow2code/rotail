@@ -2,6 +2,8 @@
 
 # rotail
 
+[![Release](https://github.com/bynow2code/rotail/actions/workflows/release.yml/badge.svg)](https://github.com/bynow2code/rotail/actions/workflows/release.yml)
+
 ## Introduction
 
 rotail works like `tail -f` but adds real-time directory log rotation monitoring, automatically following newly created

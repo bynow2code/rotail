@@ -1,45 +1,67 @@
 #!/usr/bin/env bash
 set -e
 
-# -------------------------------
-# rotail 安装脚本
-# -------------------------------
+# -----------------------
+# 自动安装 rotail 最新版本
+# -----------------------
 
-# 默认版本，可改为指定版本号
-VERSION="latest"
-
-# 检测 uname
+# 系统检测
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
-# 映射 OS
-if [ "$OS" = "darwin" ]; then OS="macos"; fi
-if [ "$OS" = "linux" ]; then OS="linux"; fi
+# OS 映射
+case "$OS" in
+    darwin) OS="macos" ;;
+    linux)  OS="linux" ;;
+    msys*|mingw*|cygwin*) OS="windows" ;;
+    *) echo "不支持的系统: $OS"; exit 1 ;;
+esac
 
-# 映射 ARCH
-if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; fi
-if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi
+# ARCH 映射
+case "$ARCH" in
+    x86_64) ARCH="amd64" ;;
+    arm64|aarch64) ARCH="arm64" ;;
+    *) echo "不支持的架构: $ARCH"; exit 1 ;;
+esac
 
-# 设置下载文件名
-FILENAME="rotail-${VERSION}-${OS}-${ARCH}"
-URL="https://github.com/bynow2code/rotail/releases/download/${VERSION}/${FILENAME}"
+# 获取最新版本号
+LATEST=$(curl -sI https://github.com/bynow2code/rotail/releases/latest \
+         | grep -i location \
+         | awk -F/ '{print $NF}' | tr -d '\r\n')
 
-echo "安装 rotail ${VERSION} 版本..."
+if [ -z "$LATEST" ]; then
+    echo "获取最新版本失败！"
+    exit 1
+fi
+
+# 构建下载文件名
+FILENAME="rotail-${LATEST}-${OS}-${ARCH}"
+# Windows 二进制加 .exe
+if [ "$OS" = "windows" ]; then
+    FILENAME="${FILENAME}.exe"
+fi
+
+URL="https://github.com/bynow2code/rotail/releases/download/${LATEST}/${FILENAME}"
+
+echo "安装 rotail ${LATEST}..."
 echo "操作系统: $OS, 架构: $ARCH"
 echo "下载链接: $URL"
 
-# 下载到临时文件
+# 下载临时文件
 TMPFILE=$(mktemp)
-curl -L "$URL" -o "$TMPFILE"
+curl -fL "$URL" -o "$TMPFILE"
 
-# macOS/Linux: 添加执行权限并移动到 /usr/local/bin
+# macOS / Linux: chmod + 移动到 /usr/local/bin
 if [ "$OS" = "macos" ] || [ "$OS" = "linux" ]; then
     chmod +x "$TMPFILE"
     sudo mv "$TMPFILE" /usr/local/bin/rotail
     echo "安装完成: /usr/local/bin/rotail"
-    echo "可用命令: rotail --version"
+    rotail --version
 else
-    # Windows 或其他系统
-    echo "请手动将下载文件放到系统 PATH 中，并重命名为 rotail"
-    echo "下载文件: $TMPFILE"
+    # Windows: 放到用户 bin 目录
+    TARGET="$HOME/bin/rotail.exe"
+    mkdir -p "$(dirname "$TARGET")"
+    mv "$TMPFILE" "$TARGET"
+    echo "安装完成: $TARGET"
+    echo "请确保 $HOME/bin 在 PATH 中，然后运行: rotail.exe --version"
 fi
