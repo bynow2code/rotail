@@ -2,32 +2,45 @@
 
 ## 简介
 
-rotail 是一款日志文件实时监控工具，支持对单个文件或整个目录进行实时追踪（tail）。  
-它类似于 Unix/Linux 的 `tail -f` 命令，但额外提供目录日志轮转监控功能。
+rotail 类似于 `tail -f`，但额外支持实时监控目录中最新文件的日志轮转，自动跟踪新生成的日志文件。
 
 ## 功能特性
 
 - 实时监控单个日志文件
-- 监控整个目录下的多个日志文件
-- 支持自定义文件扩展名过滤
-- 支持中断信号处理(SIGINT, SIGTERM)
+- 监控目录中最新日志文件
+    - 自动处理日志轮转
+    - 支持自定义文件扩展名
+- 支持中断信号(SIGINT, SIGTERM)
 - 易于使用的命令行界面
 
 ## 安装
 
+### 方式一：下载预编译二进制（推荐）
+
+从 GitHub Releases 获取 rotail：  
+https://github.com/bynow2code/rotail/releases/latest
+
+Linux / macOS：
+
 ```bash
-go install github.com/bynow2code/rotail@latest
+curl -L https://github.com/bynow/rotail/releases/latest/download/rotail-$(uname -s | tr '[:upper:]' '[:lower:]')-amd64 -o rotail
+chmod +x rotail
+sudo mv rotail /usr/local/bin/
 ```
 
+Windows：下载 `rotail-windows-amd64.exe` 直接使用。
 
-或者从源码构建：
+### 方式二：使用 Go 安装
 
 ```bash
-git clone https://github.com/bynow2code/rotail.git
-cd rotail
-go build -o rotail main.go
+go install github.com/bynow/rotail@latest
 ```
 
+### 验证安装
+
+```bash
+rotail -h
+```
 
 ## 使用方法
 
@@ -37,13 +50,11 @@ go build -o rotail main.go
 rotail -f /path/to/your/logfile.log
 ```
 
-
 ### 监控整个目录
 
 ```bash
 rotail -d /path/to/your/logdir
 ```
-
 
 ### 指定文件扩展名
 
@@ -51,22 +62,21 @@ rotail -d /path/to/your/logdir
 rotail -d /path/to/your/logdir -ext .log,.txt,.out
 ```
 
-
 ### 查看帮助信息
 
 ```bash
 rotail -h
 ```
 
-
 ## 命令行参数
 
-| 参数 | 描述 | 默认值 |
-|------|------|--------|
-| `-f` | 要监控的文件路径 | 无 |
-| `-d` | 要监控的目录路径 | 无 |
+| 参数     | 描述             | 默认值    |
+|--------|----------------|--------|
+| `-f`   | 要监控的文件路径       | 无      |
+| `-d`   | 要监控的目录路径       | 无      |
 | `-ext` | 文件扩展名过滤器(逗号分隔) | `.log` |
-| `-h` | 显示帮助信息 | false |
+| `-v`   | 版本信息           |        |
+| `-h`   | 显示帮助信息         | false  |
 
 ## 示例
 
@@ -81,15 +91,9 @@ rotail -d /var/log
 rotail -d /app/logs -ext .log,.txt
 ```
 
-
 ## 技术架构
 
-项目采用 Go 语言开发，主要组件包括：
-
-- [tail.Tailer](file:///Users/changqianqian/GolandProjects/rotail/internal/tail/tailer.go#L2-L7) 接口：定义了日志监控的核心功能
-- [tail.FileTailer](file:///Users/changqianqian/GolandProjects/rotail/internal/tail/file.go#L27-L39)：实现单文件监控
-- [tail.DirTailer](file:///Users/changqianqian/GolandProjects/rotail/internal/tail/dir.go#L25-L34)：实现目录监控
-- 信号处理机制：优雅地处理程序退出
+项目采用 Go 语言开发。
 
 ## 许可证
 

@@ -1,0 +1,93 @@
+# 工作流的名称。GitHub会在仓库的"Actions"标签下显示你的工作流名称
+name: Go Project Auto Release
+
+# 定义如何触发工作流
+on:
+  # 手动触发工作流时（在GitHub网页界面可以手动点击运行）
+  workflow_dispatch:
+
+  # 推送任意tag时触发（只有当推送的标签名称以v开头时才会运行）
+  push:
+    tags:
+      - v*
+
+# 作业定义（一个工作流可以包含多个作业，这里只有一个发布作业）
+jobs:
+  # 作业id（在同一个工作流中必须唯一）
+  release:
+    # 作业名称（在GitHub Actions界面中显示的名称）
+    name: 构建和发布 ${{ github.ref_name }}
+
+    # 运行作业的机器类型（使用GitHub托管的Ubuntu最新版本虚拟机）
+    runs-on: ubuntu-latest
+
+    # 权限配置（定义工作流需要哪些GitHub API权限）
+    permissions:
+      # 允许工作流写入仓库内容（这是创建Release所必需的权限）
+      contents: write
+
+    # 步骤序列（按顺序执行的一系列任务）
+    steps:
+      # 步骤1：将代码仓库克隆到虚拟机中
+      - name: 检出代码仓库
+        # 使用GitHub官方的checkout Action来获取代码
+        # 这个Action会将你的代码仓库克隆到虚拟机的workspace目录
+        uses: actions/checkout@main
+
+      # 步骤2：在虚拟机中安装Go编程语言环境
+      - name: 设置 Go 环境
+        # 使用GitHub官方的setup-go Action来安装Go
+        uses: actions/setup-go@v6
+        with:
+          # 指定要安装的Go版本：stable表示最新的稳定版本
+          go-version: stable
+
+      # 步骤3：编译Go项目，生成多个平台的可执行文件
+      - name: 交叉编译多平台二进制文件
+        # 在虚拟机中执行shell命令
+        run: |
+          # 创建dist目录用于存放编译后的可执行文件
+          mkdir -p dist
+
+          # 编译Android arm64版本（适用于安卓设备和ARM64架构的Linux设备）
+          # GOOS=linux: 目标操作系统为Linux
+          # GOARCH=arm64: 目标CPU架构为ARM64
+          # CGO_ENABLED=0: 禁用CGO，生成静态链接的可执行文件（不依赖系统库）
+          # -ldflags: 链接时传递的参数，这里将版本号注入到二进制文件中
+          # -o: 指定输出文件的路径和名称
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/main.version=${{ github.ref_name }}" -o dist/urlcheck-${{ github.ref_name }}-android-arm64 ./main.go
+
+          # 编译Linux amd64版本（适用于大多数Linux服务器和桌面系统）
+          # GOARCH=amd64: 目标CPU架构为x86_64（64位Intel/AMD处理器）
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/main.version=${{ github.ref_name }}" -o dist/urlcheck-${{ github.ref_name }}-linux-amd64 ./main.go
+
+          # 编译Windows amd64版本（适用于Windows 10/11等64位系统）
+          # GOOS=windows: 目标操作系统为Windows
+          # 输出文件会自动添加.exe扩展名
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/main.version=${{ github.ref_name }}" -o dist/urlcheck-${{ github.ref_name }}-windows-amd64.exe ./main.go
+
+          # 编译macOS amd64版本（适用于Intel芯片的Mac电脑）
+          # GOOS=darwin: 目标操作系统为macOS
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/main.version=${{ github.ref_name }}" -o dist/urlcheck-${{ github.ref_name }}-macos-amd64 ./main.go
+
+          # 编译macOS arm64版本（适用于Apple Silicon芯片的Mac电脑：M1/M2/M3等）
+          # GOARCH=arm64: 目标CPU架构为ARM64（Apple Silicon）
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/main.version=${{ github.ref_name }}" -o dist/urlcheck-${{ github.ref_name }}-macos-arm64 ./main.go
+
+      # 步骤4：在GitHub上创建Release并上传编译好的文件
+      - name: 创建 GitHub Release
+        # 使用第三方Action来自动创建GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          # Release关联的Git标签名称（与触发工作流的标签一致）
+          tag: ${{ github.ref_name }}
+
+          # Release的标题（在Releases页面显示的名称）
+          name: Release ${{ github.ref_name }}
+
+          # 要上传到Release中的文件路径（支持通配符匹配）
+          # dist/urlcheck-* 会匹配所有以urlcheck-开头的编译输出文件
+          artifacts: dist/rotail-*
+
+          # Release的详细说明文件（可选，如果需要可以取消注释并创建body.md文件）
+          # bodyFile: "body.md"

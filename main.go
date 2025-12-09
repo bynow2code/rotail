@@ -11,10 +11,13 @@ import (
 	"github.com/bynow2code/rotail/internal/tail"
 )
 
+var version = "0.0.0-dev"
+
 func main() {
 	file := flag.String("f", "", "File path to tail (e.g. /var/log/app.log)")
 	dir := flag.String("d", "", "Directory path to tail (e.g. /var/log)")
 	ext := flag.String("ext", ".log", "Comma-separated file extensions, default .log (e.g. .log,.txt)")
+	ver := flag.Bool("v", false, "Show version")
 	help := flag.Bool("h", false, "Show help")
 
 	flag.Parse()
@@ -27,7 +30,7 @@ func main() {
 	case *file != "":
 		t, err := tail.NewFile(*file)
 		if err != nil {
-			fmt.Printf("Exited due to error: %v\n", err)
+			fmt.Printf("Exited due to error: %ver\n", err)
 			return
 		}
 		runTailer(t)
@@ -35,10 +38,14 @@ func main() {
 		exts := strings.Split(*ext, ",")
 		t, err := tail.NewDir(*dir, tail.WithExt(exts))
 		if err != nil {
-			fmt.Printf("Exited due to error: %v\n", err)
+			fmt.Printf("Exited due to error: %ver\n", err)
 			return
 		}
 		runTailer(t)
+	case *ver:
+		fmt.Println(version)
+	case *help:
+		flag.PrintDefaults()
 	default:
 		flag.PrintDefaults()
 	}
