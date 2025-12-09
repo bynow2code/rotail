@@ -34,7 +34,7 @@ type DirTailer struct {
 	wg      sync.WaitGroup
 }
 
-// NewDirTailer 创建一个目录尾随器
+// NewDirTailer 创建一个目录跟踪器
 func NewDirTailer(path string, opts ...DTOption) (*DirTailer, error) {
 	t := &DirTailer{
 		path:   path,
@@ -64,7 +64,7 @@ func WithExt(ext []string) DTOption {
 	}
 }
 
-// Start 启动目录尾随器
+// Start 启动目录跟踪器
 func (t *DirTailer) Start() error {
 	var err error
 
@@ -77,6 +77,8 @@ func (t *DirTailer) Start() error {
 			}
 		}
 	}()
+
+	fmt.Printf("%sStarting dir tailer......%s\n%s", ColorGreen, t.path, ColorReset)
 
 	// 获取绝对路径
 	if !filepath.IsAbs(t.path) {
@@ -106,12 +108,12 @@ func (t *DirTailer) Start() error {
 	return nil
 }
 
-// run 运行目录尾随器
+// run 运行目录跟踪器
 func (t *DirTailer) run() {
 	defer t.wg.Done()
 
 	defer func() {
-		// 停止文件尾随器
+		// 停止文件跟踪器
 		if t.ft != nil {
 			t.ft.Stop()
 			t.ft = nil
@@ -179,20 +181,20 @@ func (t *DirTailer) findAndTailFile() {
 
 	var opts []FTOption
 
-	// 停止文件尾随器
+	// 停止文件跟踪器
 	if t.ft != nil {
 		// 文件路径相同
 		if t.ft.path == file {
 			return
 		}
-		// 停止文件尾随器
+		// 停止文件跟踪器
 		t.ft.Stop()
 		t.ft = nil
 		// 重置文件偏移量
 		opts = append(opts, WithSeek(0, io.SeekStart))
 	}
 
-	// 创建文件尾随器
+	// 创建文件跟踪器
 	ft, err := NewFileTailer(file, opts...)
 	if err != nil {
 		t.ErrCh <- err
@@ -205,7 +207,7 @@ func (t *DirTailer) findAndTailFile() {
 
 // tailFile 监听文件
 func (t *DirTailer) tailFile() {
-	// 启动文件尾随器
+	// 启动文件跟踪器
 	if err := t.ft.Start(); err != nil {
 		t.ErrCh <- err
 		return
@@ -233,7 +235,7 @@ func (t *DirTailer) tailFile() {
 // handleDirChangeEvent 处理目录更改事件
 func (t *DirTailer) handleDirChangeEvent(event fsnotify.Event) {
 	if event.Name == t.path {
-		t.ErrCh <- fmt.Errorf("path %s has been changed", event.Name)
+		t.ErrCh <- fmt.Errorf("the directory has been moved:%s", event.Name)
 		return
 	}
 }
@@ -265,7 +267,7 @@ func (t *DirTailer) findFileInDir() (string, error) {
 	return "", ErrNoFoundFile
 }
 
-// Stop 停止目录尾随器
+// Stop 停止目录跟踪器
 func (t *DirTailer) Stop() {
 	select {
 	case <-t.stopCh:

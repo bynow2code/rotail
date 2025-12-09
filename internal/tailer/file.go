@@ -3,15 +3,17 @@ package monitor
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
 
-// FileTailer 文件尾随器结构体，用于实时监控和读取文件新增内容
+// FileTailer 文件跟踪器结构体，用于实时监控和读取文件新增内容
 // path: 要监控的文件路径
 // file: 打开的文件句柄
 // watcher: 文件系统监控器，用于监听文件变化
@@ -37,7 +39,7 @@ type FileTailer struct {
 	wg       sync.WaitGroup
 }
 
-// NewFileTailer 创建一个文件尾随器
+// NewFileTailer 创建一个文件跟踪器
 func NewFileTailer(path string, opts ...FTOption) (*FileTailer, error) {
 	t := &FileTailer{
 		path:   path,
@@ -58,7 +60,7 @@ func NewFileTailer(path string, opts ...FTOption) (*FileTailer, error) {
 	return t, nil
 }
 
-// FTOption 文件尾随器配置项
+// FTOption 文件跟踪器配置项
 type FTOption func(tailer *FileTailer) error
 
 // WithSeek 设置文件读取位置
@@ -70,7 +72,7 @@ func WithSeek(offset int64, whence int) FTOption {
 	}
 }
 
-// Start 启动文件尾随器
+// Start 启动文件跟踪器
 func (t *FileTailer) Start() error {
 	var err error
 
@@ -89,6 +91,8 @@ func (t *FileTailer) Start() error {
 			}
 		}
 	}()
+
+	fmt.Printf("%sStarting file tailer......%s\n%s", ColorGreen, t.path, ColorReset)
 
 	// 打开文件
 	file, err := os.Open(t.path)
@@ -122,7 +126,7 @@ func (t *FileTailer) Start() error {
 	return nil
 }
 
-// run 运行文件尾随器
+// run 运行文件跟踪器
 func (t *FileTailer) run() {
 	defer t.wg.Done()
 
@@ -249,6 +253,9 @@ func (t *FileTailer) handleFileTruncation() error {
 	// 文件被截断
 	curSize := fi.Size()
 	if curSize < t.lastSize {
+
+		fmt.Printf("%sFile truncated......%s\n%s", ColorYellow, t.path, ColorReset)
+
 		if _, err := t.file.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
@@ -268,23 +275,25 @@ func (t *FileTailer) readLines() {
 		// 读取一行
 		line, err := reader.ReadString('\n')
 
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				t.ErrCh <- err
-				return
-			}
-
-			// 遇到 EOF，也要发送最后一行
-			t.LineCh <- line
-			break
+		if err != nil && !errors.Is(err, io.EOF) {
+			t.ErrCh <- err
+			return
 		}
 
-		// 正常发送新行
-		t.LineCh <- line
+		// 发送新行
+		line = strings.TrimSpace(line)
+		if line != "" {
+			t.LineCh <- line
+		}
+
+		// 文件末尾
+		if errors.Is(err, io.EOF) {
+			break
+		}
 	}
 }
 
-// Stop 停止文件尾随器
+// Stop 停止文件跟踪器
 func (t *FileTailer) Stop() {
 	select {
 	case <-t.stopCh:
