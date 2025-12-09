@@ -23,9 +23,7 @@ https://github.com/bynow2code/rotail/releases/latest
 Linux / macOS：
 
 ```bash
-curl -L https://github.com/bynow/rotail/releases/latest/download/rotail-$(uname -s | tr '[:upper:]' '[:lower:]')-amd64 -o rotail
-chmod +x rotail
-sudo mv rotail /usr/local/bin/
+curl -sfL https://raw.githubusercontent.com/bynow/rotail/main/install.sh | bash
 ```
 
 Windows：下载 `rotail-windows-amd64.exe` 直接使用。
@@ -90,6 +88,10 @@ rotail -d /var/log
 # 监控指定目录下的 .log 和 .txt 文件
 rotail -d /app/logs -ext .log,.txt
 ```
+
+## ⭐ 支持 rotail
+
+如果你觉得 rotail 有用，请给我们一个 ⭐ 支持！
 
 ## 技术架构
 

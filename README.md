@@ -26,9 +26,7 @@ https://github.com/bynow/rotail/releases/latest
 Linux / macOS:
 
 ```bash
-curl -L https://github.com/bynow/rotail/releases/latest/download/rotail-$(uname -s | tr '[:upper:]' '[:lower:]')-amd64 -o rotail
-chmod +x rotail
-sudo mv rotail /usr/local/bin/
+curl -sfL https://raw.githubusercontent.com/bynow/rotail/main/install.sh | bash
 ```
 
 Windows: download `rotail-windows-amd64.exe` and run it.
@@ -97,6 +95,10 @@ rotail -d /var/log
 # Monitor .log and .txt files in a specific directory
 rotail -d /app/logs -ext .log,.txt
 ```
+
+## ⭐ Star this project
+
+If you find rotail useful, please give it a ⭐ on GitHub!
 
 ## Architecture
 
