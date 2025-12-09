@@ -108,6 +108,11 @@ func (t *FileTailer) run() {
 	defer t.wg.Done()
 	defer t.cleanup()
 
+	if err := t.readLines(); err != nil {
+		t.errCh <- err
+		return
+	}
+
 	for {
 		select {
 		case <-t.stopCh:
