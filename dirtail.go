@@ -13,6 +13,15 @@ import (
 
 var ErrNoFoundFile = errors.New("no file found")
 
+// DirTailer 是一个目录监听器，用于监控指定目录下特定扩展名文件的变化并读取新增的行内容
+// path: 监听的目录路径
+// ext: 需要监听的文件扩展名列表
+// ft: 文件跟踪器，用于跟踪文件内容变化
+// watcher: 文件系统监听器，用于监控目录变化
+// LineCh: 用于发送读取到的文件行内容的通道
+// ErrCh: 用于发送错误信息的通道
+// stopCh: 用于接收停止信号的通道
+// wg: 用于等待所有goroutine完成的等待组
 type DirTailer struct {
 	path    string
 	ext     []string
@@ -162,6 +171,7 @@ func (t *DirTailer) findAndTailFile() {
 		t.ErrCh <- err
 		return
 	}
+	// 文件不存在
 	if file == "" {
 		return
 	}
@@ -181,20 +191,20 @@ func (t *DirTailer) findAndTailFile() {
 		t.ErrCh <- err
 		return
 	}
+	t.ft = ft
 
-	// 启动文件尾随器
 	go t.tailFile(ft)
 }
 
 // tailFile 监听文件
 func (t *DirTailer) tailFile(ft *FileTailer) {
-	t.ft = ft
-
+	// 启动文件尾随器
 	if err := t.ft.Start(); err != nil {
 		t.ErrCh <- err
 		return
 	}
 
+	// 监听文件行内容
 	go func() {
 		for line := range t.ft.LineCh {
 			t.LineCh <- line
@@ -202,18 +212,15 @@ func (t *DirTailer) tailFile(ft *FileTailer) {
 	}()
 
 	select {
+
+	// 停止信号
 	case <-t.stopCh:
 		t.ft.Stop()
+
+	// 错误
 	case err := <-t.ft.ErrCh:
 		t.ErrCh <- err
-		return
 	}
-}
-
-// handleCreateEvent 处理目录创建事件
-func (t *DirTailer) handleCreateEvent(event fsnotify.Event) {
-	t.findAndTailFile()
-	return
 }
 
 // handleDirChangeEvent 处理目录更改事件
