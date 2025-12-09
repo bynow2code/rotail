@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -176,28 +177,34 @@ func (t *DirTailer) findAndTailFile() {
 		return
 	}
 
+	var opts []FTOption
+
 	// 停止文件尾随器
 	if t.ft != nil {
+		// 文件路径相同
 		if t.ft.path == file {
 			return
 		}
+		// 停止文件尾随器
 		t.ft.Stop()
 		t.ft = nil
+		// 重置文件偏移量
+		opts = append(opts, WithSeek(0, io.SeekStart))
 	}
 
 	// 创建文件尾随器
-	ft, err := NewFileTailer(file)
+	ft, err := NewFileTailer(file, opts...)
 	if err != nil {
 		t.ErrCh <- err
 		return
 	}
 	t.ft = ft
 
-	go t.tailFile(ft)
+	go t.tailFile()
 }
 
 // tailFile 监听文件
-func (t *DirTailer) tailFile(ft *FileTailer) {
+func (t *DirTailer) tailFile() {
 	// 启动文件尾随器
 	if err := t.ft.Start(); err != nil {
 		t.ErrCh <- err
