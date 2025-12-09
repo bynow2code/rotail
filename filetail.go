@@ -131,6 +131,8 @@ func (t *FileTailer) run() {
 
 	for {
 		select {
+		case <-t.stopCh:
+			return
 		case event, ok := <-t.watcher.Events:
 			if !ok {
 				return
