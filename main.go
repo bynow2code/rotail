@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/bynow2code/rotail/internal/tailer"
 )
 
 func main() {
@@ -17,7 +19,7 @@ func main() {
 }
 
 func tailDir(path string) {
-	t, err := NewDirTailer(path, WithExt([]string{".log"}))
+	t, err := monitor.NewDirTailer(path, monitor.WithExt([]string{".log"}))
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -46,7 +48,7 @@ func tailDir(path string) {
 }
 
 func tailFile(path string) {
-	t, err := NewFileTailer(path)
+	t, err := monitor.NewFileTailer(path)
 	if err != nil {
 		log.Fatalln(err)
 	}
