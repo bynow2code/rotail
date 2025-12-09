@@ -48,7 +48,7 @@ func NewFileTailer(path string, opts ...FTOption) (*FileTailer, error) {
 		stopCh: make(chan struct{}),
 	}
 
-	// 配置项
+	// 加载配置项
 	for _, opt := range opts {
 		if err := opt(t); err != nil {
 			return nil, err
@@ -76,11 +76,13 @@ func (t *FileTailer) Start() error {
 
 	defer func() {
 		if err != nil {
+			// 关闭 watcher
 			if t.watcher != nil {
 				_ = t.watcher.Close()
 				t.watcher = nil
 			}
 
+			// 关闭文件
 			if t.file != nil {
 				_ = t.file.Close()
 				t.file = nil
@@ -125,16 +127,19 @@ func (t *FileTailer) run() {
 	defer t.wg.Done()
 
 	defer func() {
+		// 关闭 watcher
 		if t.watcher != nil {
 			_ = t.watcher.Close()
 			t.watcher = nil
 		}
 
+		// 关闭文件
 		if t.file != nil {
 			_ = t.file.Close()
 			t.file = nil
 		}
 
+		// 关闭 LineCh
 		close(t.LineCh)
 	}()
 
