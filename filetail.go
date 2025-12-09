@@ -48,7 +48,7 @@ func NewFileTailer(path string, opts ...FTOption) (*FileTailer, error) {
 		stopCh: make(chan struct{}),
 	}
 
-	// 加载配置项
+	// 设置参数
 	for _, opt := range opts {
 		if err := opt(t); err != nil {
 			return nil, err
@@ -159,7 +159,7 @@ func (t *FileTailer) run() {
 		case <-t.stopCh:
 			return
 
-		// 文件事件
+		// 监听事件
 		case event, ok := <-t.watcher.Events:
 			if !ok {
 				return
