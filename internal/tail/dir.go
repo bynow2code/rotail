@@ -222,7 +222,10 @@ func (t *DirTailer) tailFile() {
 				return
 			}
 			t.lineCh <- line
-		case err := <-t.ft.errCh:
+		case err, ok := <-t.ft.errCh:
+			if !ok {
+				return
+			}
 			t.errCh <- err
 		}
 	}

@@ -71,7 +71,10 @@ func runTailer(t tail.Tailer) {
 		fmt.Println("Received stop signal")
 		t.Stop()
 		fmt.Println("Exited via signal")
-	case err := <-t.GetErrCh():
+	case err, ok := <-t.GetErrCh():
+		if !ok {
+			return
+		}
 		fmt.Printf("Exited due to error: %v\n", err)
 	}
 }

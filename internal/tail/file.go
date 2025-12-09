@@ -208,10 +208,8 @@ func (t *FileTailer) readLines() error {
 	reader := bufio.NewReader(t.file)
 	for {
 		line, err := reader.ReadString('\n')
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				return err
-			}
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
 		}
 
 		line = strings.TrimSpace(line)
