@@ -113,11 +113,8 @@ func (t *DirTailer) run() {
 			}
 
 			if event.Op&(fsnotify.Rename|fsnotify.Remove) != 0 {
-				//file, err := t.findFileInDir()
-				//if err != nil {
-				//	t.ErrCh <- err
-				//	return
-				//}
+				t.ErrCh <- fmt.Errorf("path %s has been changed", event.Name)
+				return
 			}
 		case err, ok := <-t.watcher.Errors:
 			if !ok {
@@ -212,6 +209,7 @@ func (t *DirTailer) handleCreateEvent(event fsnotify.Event) {
 }
 
 func (t *DirTailer) handleChangeEvent(event fsnotify.Event) {
+	return
 }
 
 func (t *DirTailer) findFileInDir() (string, error) {
