@@ -208,10 +208,6 @@ func (t *DirTailer) handleCreateEvent(event fsnotify.Event) {
 	return
 }
 
-func (t *DirTailer) handleChangeEvent(event fsnotify.Event) {
-	return
-}
-
 func (t *DirTailer) findFileInDir() (string, error) {
 	entries, err := os.ReadDir(t.path)
 	if err != nil {
