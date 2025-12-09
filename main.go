@@ -1,77 +1,68 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
-	"github.com/bynow2code/rotail/internal/tailer"
+	"github.com/bynow2code/rotail/internal/tail"
 )
 
 func main() {
-	path := "/Users/changqianqian/GolandProjects/rotail/logs"
-	//dirPath := "test.log"
-	//dirPath := "./logs"
+	file := flag.String("f", "", "File path to tail (e.g. /var/log/app.log)")
+	dir := flag.String("d", "", "Directory path to tail (e.g. /var/log)")
+	ext := flag.String("ext", ".log", "Comma-separated file extensions, default .log (e.g. .log,.txt)")
+	help := flag.Bool("h", false, "Show help")
 
-	tailDir(path)
-}
-
-func tailDir(path string) {
-	t, err := monitor.NewDirTailer(path, monitor.WithExt([]string{".log"}))
-	if err != nil {
-		log.Fatalln(err)
+	flag.Parse()
+	if *help {
+		flag.PrintDefaults()
+		os.Exit(0)
 	}
 
+	switch {
+	case *file != "":
+		t, err := tail.NewFile(*file)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		runTailer(t)
+	case *dir != "":
+		exts := strings.Split(*ext, ",")
+		t, err := tail.NewDir(*dir, tail.WithExt(exts))
+		if err != nil {
+			log.Fatalln(err)
+		}
+		runTailer(t)
+	default:
+		flag.PrintDefaults()
+	}
+}
+
+func runTailer(t tail.Tailer) {
 	if err := t.Start(); err != nil {
 		log.Fatalln(err)
 	}
 
 	go func() {
-		for line := range t.LineCh {
-			fmt.Println("行：", line)
+		for line := range t.GetLineCh() {
+			fmt.Println(line)
 		}
 	}()
 
-	sigCh := make(chan os.Signal)
+	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case <-sigCh:
-		fmt.Println("收到停止信号")
+		fmt.Println("Received stop signal")
 		t.Stop()
-		fmt.Println("信号退出")
-	case err := <-t.ErrCh:
-		fmt.Println("发生错误退出", err)
-	}
-}
-
-func tailFile(path string) {
-	t, err := monitor.NewFileTailer(path)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	if err := t.Start(); err != nil {
-		log.Fatalln(err)
-	}
-
-	go func() {
-		for line := range t.LineCh {
-			fmt.Println("行：", line)
-		}
-	}()
-
-	sigCh := make(chan os.Signal)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case <-sigCh:
-		fmt.Println("收到停止信号")
-		t.Stop()
-		fmt.Println("信号退出")
-	case err := <-t.ErrCh:
-		fmt.Println("发生错误退出", err)
+		fmt.Println("Exited via signal")
+	case err := <-t.GetErrCh():
+		fmt.Printf("Exited due to error: %v\n", err)
 	}
 }

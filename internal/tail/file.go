@@ -1,4 +1,4 @@
-package monitor
+package tail
 
 import (
 	"bufio"
@@ -21,8 +21,8 @@ import (
 // lastSize: 上次记录的文件大小
 // offset: 当前读取位置的偏移量
 // whence: 寻找位置的参考点（SeekStart, SeekCurrent, SeekEnd）
-// LineCh: 传输文件新行内容的通道
-// ErrCh: 传输错误信息的通道
+// lineCh: 传输文件新行内容的通道
+// errCh: 传输错误信息的通道
 // stopCh: 控制停止信号的通道
 // wg: 用于等待所有goroutine完成的同步组
 type FileTailer struct {
@@ -33,20 +33,20 @@ type FileTailer struct {
 	lastSize int64
 	offset   int64
 	whence   int
-	LineCh   chan string
-	ErrCh    chan error
+	lineCh   chan string
+	errCh    chan error
 	stopCh   chan struct{}
 	wg       sync.WaitGroup
 }
 
-// NewFileTailer 创建一个文件跟踪器
-func NewFileTailer(path string, opts ...FTOption) (*FileTailer, error) {
+// NewFile 创建一个文件跟踪器
+func NewFile(path string, opts ...FTOption) (*FileTailer, error) {
 	t := &FileTailer{
 		path:   path,
 		offset: 0,
 		whence: io.SeekEnd,
-		LineCh: make(chan string),
-		ErrCh:  make(chan error),
+		lineCh: make(chan string),
+		errCh:  make(chan error),
 		stopCh: make(chan struct{}),
 	}
 
@@ -92,7 +92,7 @@ func (t *FileTailer) Start() error {
 		}
 	}()
 
-	fmt.Printf("%sStarting file tailer......%s\n%s", ColorGreen, t.path, ColorReset)
+	fmt.Printf("%sStarting file tailer:%s\n%s", colorGreen, t.path, colorReset)
 
 	// 打开文件
 	file, err := os.Open(t.path)
@@ -143,13 +143,12 @@ func (t *FileTailer) run() {
 			t.file = nil
 		}
 
-		// 关闭 LineCh
-		close(t.LineCh)
+		close(t.lineCh)
 	}()
 
 	// 改变文件偏移量
 	if _, err := t.file.Seek(t.offset, t.whence); err != nil {
-		t.ErrCh <- err
+		t.errCh <- err
 		return
 	}
 
@@ -186,7 +185,7 @@ func (t *FileTailer) run() {
 			if !ok {
 				return
 			}
-			t.ErrCh <- err
+			t.errCh <- err
 			return
 		}
 	}
@@ -196,7 +195,7 @@ func (t *FileTailer) run() {
 func (t *FileTailer) handleWriteEvent(event fsnotify.Event) {
 	// 处理文件截断
 	if err := t.handleFileTruncation(); err != nil {
-		t.ErrCh <- err
+		t.errCh <- err
 		return
 	}
 
@@ -208,14 +207,14 @@ func (t *FileTailer) handleWriteEvent(event fsnotify.Event) {
 func (t *FileTailer) handleRotate() {
 	// 关闭文件句柄
 	if err := t.file.Close(); err != nil {
-		t.ErrCh <- err
+		t.errCh <- err
 		return
 	}
 
 	// 打开文件
 	file, err := os.Open(t.path)
 	if err != nil {
-		t.ErrCh <- err
+		t.errCh <- err
 		return
 	}
 	t.file = file
@@ -223,7 +222,7 @@ func (t *FileTailer) handleRotate() {
 	// 获取文件大小
 	fi, err := t.file.Stat()
 	if err != nil {
-		t.ErrCh <- err
+		t.errCh <- err
 		return
 	}
 	t.size = fi.Size()
@@ -232,7 +231,7 @@ func (t *FileTailer) handleRotate() {
 	// 添加文件监控
 	_ = t.watcher.Remove(t.path)
 	if err = t.watcher.Add(t.path); err != nil {
-		t.ErrCh <- err
+		t.errCh <- err
 		return
 	}
 
@@ -254,7 +253,7 @@ func (t *FileTailer) handleFileTruncation() error {
 	curSize := fi.Size()
 	if curSize < t.lastSize {
 
-		fmt.Printf("%sFile truncated......%s\n%s", ColorYellow, t.path, ColorReset)
+		fmt.Printf("%sFile truncated:%s\n%s", colorYellow, t.path, colorReset)
 
 		if _, err := t.file.Seek(0, io.SeekStart); err != nil {
 			return err
@@ -276,14 +275,14 @@ func (t *FileTailer) readLines() {
 		line, err := reader.ReadString('\n')
 
 		if err != nil && !errors.Is(err, io.EOF) {
-			t.ErrCh <- err
+			t.errCh <- err
 			return
 		}
 
 		// 发送新行
 		line = strings.TrimSpace(line)
 		if line != "" {
-			t.LineCh <- line
+			t.lineCh <- line
 		}
 
 		// 文件末尾
@@ -291,6 +290,16 @@ func (t *FileTailer) readLines() {
 			break
 		}
 	}
+}
+
+// GetLineCh 获取行通道
+func (t *FileTailer) GetLineCh() <-chan string {
+	return t.lineCh
+}
+
+// GetErrCh 获取错误通道
+func (t *FileTailer) GetErrCh() <-chan error {
+	return t.errCh
 }
 
 // Stop 停止文件跟踪器

@@ -1,4 +1,4 @@
-package monitor
+package tail
 
 import (
 	"errors"
@@ -19,8 +19,8 @@ var ErrNoFoundFile = errors.New("no file found")
 // ext: 需要监听的文件扩展名列表
 // ft: 文件跟踪器，用于跟踪文件内容变化
 // watcher: 文件系统监听器，用于监控目录变化
-// LineCh: 用于发送读取到的文件行内容的通道
-// ErrCh: 用于发送错误信息的通道
+// lineCh: 用于发送读取到的文件行内容的通道
+// errCh: 用于发送错误信息的通道
 // stopCh: 用于接收停止信号的通道
 // wg: 用于等待所有goroutine完成的等待组
 type DirTailer struct {
@@ -28,18 +28,18 @@ type DirTailer struct {
 	ext     []string
 	ft      *FileTailer
 	watcher *fsnotify.Watcher
-	LineCh  chan string
-	ErrCh   chan error
+	lineCh  chan string
+	errCh   chan error
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
 }
 
-// NewDirTailer 创建一个目录跟踪器
-func NewDirTailer(path string, opts ...DTOption) (*DirTailer, error) {
+// NewDir 创建一个目录跟踪器
+func NewDir(path string, opts ...DTOption) (*DirTailer, error) {
 	t := &DirTailer{
 		path:   path,
-		LineCh: make(chan string),
-		ErrCh:  make(chan error),
+		lineCh: make(chan string),
+		errCh:  make(chan error),
 		stopCh: make(chan struct{}),
 	}
 
@@ -78,7 +78,7 @@ func (t *DirTailer) Start() error {
 		}
 	}()
 
-	fmt.Printf("%sStarting dir tailer......%s\n%s", ColorGreen, t.path, ColorReset)
+	fmt.Printf("%sStarting dir tailer:%s\n%s", colorGreen, t.path, colorReset)
 
 	// 获取目录信息
 	fi, err := os.Stat(t.path)
@@ -136,8 +136,7 @@ func (t *DirTailer) run() {
 			t.watcher = nil
 		}
 
-		// 关闭 LineCh
-		close(t.LineCh)
+		close(t.lineCh)
 	}()
 
 	// 寻找并开始监听文件
@@ -171,7 +170,7 @@ func (t *DirTailer) run() {
 			if !ok {
 				return
 			}
-			t.ErrCh <- err
+			t.errCh <- err
 			return
 		}
 	}
@@ -182,7 +181,7 @@ func (t *DirTailer) findAndTailFile() {
 	// 查找文件
 	file, err := t.findFileInDir()
 	if err != nil && !errors.Is(err, ErrNoFoundFile) {
-		t.ErrCh <- err
+		t.errCh <- err
 		return
 	}
 	// 文件不存在
@@ -206,9 +205,9 @@ func (t *DirTailer) findAndTailFile() {
 	}
 
 	// 创建文件跟踪器
-	ft, err := NewFileTailer(file, opts...)
+	ft, err := NewFile(file, opts...)
 	if err != nil {
-		t.ErrCh <- err
+		t.errCh <- err
 		return
 	}
 	t.ft = ft
@@ -220,14 +219,14 @@ func (t *DirTailer) findAndTailFile() {
 func (t *DirTailer) tailFile() {
 	// 启动文件跟踪器
 	if err := t.ft.Start(); err != nil {
-		t.ErrCh <- err
+		t.errCh <- err
 		return
 	}
 
 	// 监听文件行内容
 	go func() {
-		for line := range t.ft.LineCh {
-			t.LineCh <- line
+		for line := range t.ft.lineCh {
+			t.lineCh <- line
 		}
 	}()
 
@@ -238,15 +237,15 @@ func (t *DirTailer) tailFile() {
 		t.ft.Stop()
 
 	// 错误
-	case err := <-t.ft.ErrCh:
-		t.ErrCh <- err
+	case err := <-t.ft.errCh:
+		t.errCh <- err
 	}
 }
 
 // handleDirChangeEvent 处理目录更改事件
 func (t *DirTailer) handleDirChangeEvent(event fsnotify.Event) {
 	if event.Name == t.path {
-		t.ErrCh <- fmt.Errorf("the directory has been moved:%s", event.Name)
+		t.errCh <- fmt.Errorf("the directory has been moved:%s", event.Name)
 		return
 	}
 }
@@ -276,6 +275,16 @@ func (t *DirTailer) findFileInDir() (string, error) {
 	}
 
 	return "", ErrNoFoundFile
+}
+
+// GetLineCh 获取行通道
+func (t *DirTailer) GetLineCh() <-chan string {
+	return t.lineCh
+}
+
+// GetErrCh 获取错误通道
+func (t *DirTailer) GetErrCh() <-chan error {
+	return t.errCh
 }
 
 // Stop 停止目录跟踪器
