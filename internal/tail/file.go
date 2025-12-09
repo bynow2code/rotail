@@ -13,18 +13,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// FileTailer 文件跟踪器结构体，用于实时监控和读取文件新增内容
-// path: 要监控的文件路径
-// file: 打开的文件句柄
-// watcher: 文件系统监控器，用于监听文件变化
-// size: 当前文件大小
-// lastSize: 上次记录的文件大小
-// offset: 当前读取位置的偏移量
-// whence: 寻找位置的参考点（SeekStart, SeekCurrent, SeekEnd）
-// lineCh: 传输文件新行内容的通道
-// errCh: 传输错误信息的通道
-// stopCh: 控制停止信号的通道
-// wg: 用于等待所有goroutine完成的同步组
 type FileTailer struct {
 	path     string
 	file     *os.File
@@ -37,6 +25,7 @@ type FileTailer struct {
 	errCh    chan error
 	stopCh   chan struct{}
 	wg       sync.WaitGroup
+	stopOnce sync.Once
 }
 
 // NewFile 创建一个文件跟踪器
@@ -50,7 +39,6 @@ func NewFile(path string, opts ...FTOption) (*FileTailer, error) {
 		stopCh: make(chan struct{}),
 	}
 
-	// 设置参数
 	for _, opt := range opts {
 		if err := opt(t); err != nil {
 			return nil, err
@@ -60,10 +48,9 @@ func NewFile(path string, opts ...FTOption) (*FileTailer, error) {
 	return t, nil
 }
 
-// FTOption 文件跟踪器配置项
 type FTOption func(tailer *FileTailer) error
 
-// WithSeek 设置文件偏移量
+// WithSeek 设置偏移量
 func WithSeek(offset int64, whence int) FTOption {
 	return func(t *FileTailer) error {
 		t.offset = offset
@@ -74,49 +61,39 @@ func WithSeek(offset int64, whence int) FTOption {
 
 // Start 启动文件跟踪器
 func (t *FileTailer) Start() error {
-	var err error
+	fmt.Printf("%sStarting f tailer:%s\n%s", colorGreen, t.path, colorReset)
 
-	defer func() {
-		if err != nil {
-			// 关闭 watcher
-			if t.watcher != nil {
-				_ = t.watcher.Close()
-				t.watcher = nil
-			}
-
-			// 关闭文件
-			if t.file != nil {
-				_ = t.file.Close()
-				t.file = nil
-			}
-		}
-	}()
-
-	fmt.Printf("%sStarting file tailer:%s\n%s", colorGreen, t.path, colorReset)
-
-	// 打开文件
-	file, err := os.Open(t.path)
+	f, err := os.Open(t.path)
 	if err != nil {
 		return err
 	}
-	t.file = file
+	t.file = f
 
-	// 获取文件大小
+	// 设置初始偏移量
+	if _, err := t.file.Seek(t.offset, t.whence); err != nil {
+		t.cleanup()
+		return err
+	}
+
+	// 设置初始文件大小
 	fi, err := t.file.Stat()
 	if err != nil {
+		t.cleanup()
 		return err
 	}
 	t.size = fi.Size()
 	t.lastSize = t.size
 
-	// 创建文件系统监控器
-	t.watcher, err = fsnotify.NewWatcher()
+	// 创建 watcher
+	w, err := fsnotify.NewWatcher()
 	if err != nil {
+		t.cleanup()
 		return err
 	}
+	t.watcher = w
 
-	// 添加文件监控
 	if err = t.watcher.Add(t.path); err != nil {
+		t.cleanup()
 		return err
 	}
 
@@ -129,57 +106,25 @@ func (t *FileTailer) Start() error {
 // run 运行文件跟踪器
 func (t *FileTailer) run() {
 	defer t.wg.Done()
-
-	defer func() {
-		// 关闭 watcher
-		if t.watcher != nil {
-			_ = t.watcher.Close()
-			t.watcher = nil
-		}
-
-		// 关闭文件
-		if t.file != nil {
-			_ = t.file.Close()
-			t.file = nil
-		}
-
-		close(t.lineCh)
-	}()
-
-	// 调整文件偏移量
-	if _, err := t.file.Seek(t.offset, t.whence); err != nil {
-		t.errCh <- err
-		return
-	}
-
-	// 读取文件内容
-	if err := t.readLines(); err != nil {
-		t.errCh <- err
-		return
-	}
+	defer t.cleanup()
 
 	for {
 		select {
-
-		// 停止信号
 		case <-t.stopCh:
 			return
-
-		// 监听事件
 		case event, ok := <-t.watcher.Events:
 			if !ok {
 				return
 			}
 
-			// 处理文件写入
 			if event.Has(fsnotify.Write) {
-				if err := t.handleWrite(event); err != nil {
+				if err := t.handleWriteEvent(); err != nil {
 					t.errCh <- err
 					return
 				}
+
 			}
 
-			// 处理文件轮转
 			if event.Op&(fsnotify.Create|fsnotify.Rename|fsnotify.Remove) != 0 {
 				// 等待写入方重建文件
 				time.Sleep(100 * time.Millisecond)
@@ -188,8 +133,6 @@ func (t *FileTailer) run() {
 					return
 				}
 			}
-
-		// 监听错误
 		case err, ok := <-t.watcher.Errors:
 			if !ok {
 				return
@@ -200,9 +143,17 @@ func (t *FileTailer) run() {
 	}
 }
 
-// handleFileTruncation 处理文件截断
-func (t *FileTailer) handleFileTruncation() error {
-	// 获取文件大小
+// handleWriteEvent 处理文件写入事件
+func (t *FileTailer) handleWriteEvent() error {
+	if err := t.handleTruncate(); err != nil {
+		return err
+	}
+
+	return t.readLines()
+}
+
+// handleTruncate 处理文件截断
+func (t *FileTailer) handleTruncate() error {
 	fi, err := t.file.Stat()
 	if err != nil {
 		return err
@@ -212,49 +163,30 @@ func (t *FileTailer) handleFileTruncation() error {
 	curSize := fi.Size()
 	if curSize < t.lastSize {
 		fmt.Printf("%sFile truncated:%s\n%s", colorYellow, t.path, colorReset)
-
-		// 调整文件偏移量
 		if _, err := t.file.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
 	}
 
-	// 更新文件大小
 	t.lastSize = curSize
-
-	return nil
-}
-
-// handleWrite 处理文件写入
-func (t *FileTailer) handleWrite(event fsnotify.Event) error {
-	// 处理文件截断
-	if err := t.handleFileTruncation(); err != nil {
-		return err
-	}
-
-	// 读取文件内容
-	if err := t.readLines(); err != nil {
-		return err
-	}
 
 	return nil
 }
 
 // handleRotate 处理文件轮转
 func (t *FileTailer) handleRotate() error {
-	// 关闭文件句柄
-	if err := t.file.Close(); err != nil {
-		return err
+	if t.file != nil {
+		_ = t.file.Close()
+		t.file = nil
 	}
 
-	// 打开文件
-	file, err := os.Open(t.path)
+	f, err := os.Open(t.path)
 	if err != nil {
 		return err
 	}
-	t.file = file
+	t.file = f
 
-	// 获取文件大小
+	// 重新设置初始文件大小
 	fi, err := t.file.Stat()
 	if err != nil {
 		return err
@@ -262,41 +194,31 @@ func (t *FileTailer) handleRotate() error {
 	t.size = fi.Size()
 	t.lastSize = t.size
 
-	// 添加文件监控
+	// 重新添加 watcher
 	_ = t.watcher.Remove(t.path)
 	if err = t.watcher.Add(t.path); err != nil {
 		return err
 	}
 
-	// 读取文件内容
-	if err := t.readLines(); err != nil {
-		return err
-	}
-
-	return nil
+	return t.readLines()
 }
 
-// readLines 读取文件内容
+// readLines 读取文件行
 func (t *FileTailer) readLines() error {
 	reader := bufio.NewReader(t.file)
-
 	for {
-		// 读取一行
 		line, err := reader.ReadString('\n')
-
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				return err
 			}
 		}
 
-		// 发送新行
 		line = strings.TrimSpace(line)
 		if line != "" {
 			t.lineCh <- line
 		}
 
-		// 文件末尾
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -317,10 +239,22 @@ func (t *FileTailer) GetErrCh() <-chan error {
 
 // Stop 停止文件跟踪器
 func (t *FileTailer) Stop() {
-	select {
-	case <-t.stopCh:
-	default:
+	t.stopOnce.Do(func() {
 		close(t.stopCh)
 		t.wg.Wait()
+	})
+}
+
+// cleanup 清理资源
+func (t *FileTailer) cleanup() {
+	if t.watcher != nil {
+		_ = t.watcher.Close()
+		t.watcher = nil
 	}
+	if t.file != nil {
+		_ = t.file.Close()
+		t.file = nil
+	}
+	close(t.lineCh)
+	close(t.errCh)
 }
