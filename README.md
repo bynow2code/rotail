@@ -1,4 +1,4 @@
-[English version](README.md) | [中文版](README.md)
+[English version](README.md) | [中文版](README_CN.md)
 
 # rotail
 
