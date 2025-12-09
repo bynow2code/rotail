@@ -27,7 +27,7 @@ https://github.com/bynow2code/rotail/releases/latest
 Linux / macOS：
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/bynow/rotail/main/install.sh | bash
+curl -sfL https://raw.githubusercontent.com/bynow2code/rotail/main/install.sh | bash
 ```
 
 Windows：下载 `rotail-windows-amd64.exe` 直接使用。
