@@ -15,11 +15,11 @@ import (
 )
 
 type FileTailer struct {
-	closeOnce    sync.Once
 	filePath     string
 	fileHandle   *os.File
 	fsWatcher    *fsnotify.Watcher
 	lastFileSize int64
+	lastOffset   int64
 	seekOffset   int64
 	seekWhence   int
 	lineChan     chan string
@@ -27,6 +27,7 @@ type FileTailer struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
+	closeOnce    sync.Once
 }
 
 // NewFileTailer 创建文件跟踪器
@@ -71,21 +72,16 @@ func WithOffset(offset int64, whence int) FileTailerOption {
 func (t *FileTailer) initFile() error {
 	f, err := os.Open(t.filePath)
 	if err != nil {
-		return fmt.Errorf("open file error:%w", err)
+		return err
 	}
 	t.fileHandle = f
 
 	// 设置初始偏移量
-	if _, err := t.fileHandle.Seek(t.seekOffset, t.seekWhence); err != nil {
-		return fmt.Errorf("seek file error:%w", err)
-	}
-
-	// 设置初始文件大小
-	fi, err := t.fileHandle.Stat()
+	offset, err := t.fileHandle.Seek(t.seekOffset, t.seekWhence)
 	if err != nil {
-		return fmt.Errorf("stat file error:%w", err)
+		return err
 	}
-	t.lastFileSize = fi.Size()
+	t.lastOffset = offset
 
 	return nil
 }
@@ -93,12 +89,12 @@ func (t *FileTailer) initFile() error {
 func (t *FileTailer) initWatcher() error {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		return fmt.Errorf("new fsnotify watcher error:%w", err)
+		return err
 	}
 	t.fsWatcher = w
 
 	if err = t.fsWatcher.Add(t.filePath); err != nil {
-		return fmt.Errorf("add fsnotify watcher error:%w", err)
+		return err
 	}
 
 	return nil
@@ -150,7 +146,7 @@ func (t *FileTailer) run() {
 			}
 
 			if event.Op&(fsnotify.Rename|fsnotify.Remove|fsnotify.Create) != 0 {
-				if err := t.handleFileResourceChange(); err != nil {
+				if err := t.handleFileResourceChange(event); err != nil {
 					t.errorChan <- err
 					return
 				}
@@ -167,45 +163,42 @@ func (t *FileTailer) run() {
 
 // 处理定时器触发
 func (t *FileTailer) handleTimerTrigger() error {
-	sizeState, err := t.handleFileTruncation()
-	if err != nil {
-		return err
-	}
-	if sizeState == fileSizeUnchanged {
-		return nil
-	}
-
-	if err := t.readLines(); err != nil {
-		return err
-	}
-
-	return nil
+	return t.readIncrement()
 }
 
 // 处理文件写入
 func (t *FileTailer) handleFileWrite() error {
-	if _, err := t.handleFileTruncation(); err != nil {
+	return t.readIncrement()
+}
+
+// 增量文件读取（含截断处理）
+func (t *FileTailer) readIncrement() error {
+	sizeState, err := t.handleFileTruncation()
+	if err != nil {
 		return err
 	}
 
-	if err := t.readLines(); err != nil {
-		return err
+	if sizeState == fileSizeUnchanged {
+		return nil
 	}
 
-	return nil
+	return t.readLines()
 }
 
 // 处理文件资源变化
-func (t *FileTailer) handleFileResourceChange() error {
+func (t *FileTailer) handleFileResourceChange(event fsnotify.Event) error {
+	fmt.Printf("%sFile changed:%s(%v)\n%s", colorYellow, t.filePath, event.Op, colorReset)
+
+	// 等待文件轮转
+	time.Sleep(200 * time.Millisecond)
+
+	fmt.Printf("%sPreparing to reopen the file:%s\n%s", colorYellow, t.filePath, colorReset)
+
 	if err := t.handleFileRotation(); err != nil {
 		return err
 	}
 
-	if err := t.readLines(); err != nil {
-		return err
-	}
-
-	return nil
+	return t.readLines()
 }
 
 type fileSizeState int
@@ -222,21 +215,18 @@ func (t *FileTailer) handleFileTruncation() (fileSizeState, error) {
 	if err != nil {
 		return 0, fmt.Errorf("stat file error:%w", err)
 	}
+	t.lastFileSize = fi.Size()
 
-	currentFileSize := fi.Size()
-	if currentFileSize == t.lastFileSize {
+	switch {
+	case t.lastFileSize == t.lastOffset:
 		return fileSizeUnchanged, nil
-	} else if currentFileSize > t.lastFileSize {
-		t.lastFileSize = currentFileSize
+	case t.lastFileSize > t.lastFileSize:
 		return fileSizeIncreased, nil
-	} else if currentFileSize < t.lastFileSize {
+	case t.lastFileSize < t.lastOffset:
 		fmt.Printf("%sFile truncated:%s\n%s", colorYellow, t.filePath, colorReset)
-
 		if _, err := t.fileHandle.Seek(0, io.SeekStart); err != nil {
 			return 0, fmt.Errorf("seek file error:%w", err)
 		}
-
-		t.lastFileSize = currentFileSize
 		return fileSizeDecreased, err
 	}
 
@@ -245,12 +235,23 @@ func (t *FileTailer) handleFileTruncation() (fileSizeState, error) {
 
 // 读取所有行
 func (t *FileTailer) readLines() error {
+	var isEOF bool
 	reader := bufio.NewReader(t.fileHandle)
 	for {
 		line, err := reader.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("read file error:%w", err)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				isEOF = true
+			} else {
+				return fmt.Errorf("read file error:%w", err)
+			}
 		}
+
+		offset, err := t.fileHandle.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return fmt.Errorf("seek file error:%w", err)
+		}
+		t.lastOffset = offset
 
 		line = strings.TrimSpace(line)
 		if line != "" {
@@ -258,7 +259,7 @@ func (t *FileTailer) readLines() error {
 		}
 
 		// 最后一行
-		if errors.Is(err, io.EOF) {
+		if isEOF {
 			break
 		}
 	}
@@ -268,9 +269,6 @@ func (t *FileTailer) readLines() error {
 
 // 处理文件轮转
 func (t *FileTailer) handleFileRotation() error {
-	// 等待文件轮转
-	time.Sleep(10 * time.Second)
-
 	if err := t.reOpenFile(); err != nil {
 		return err
 	}
@@ -284,23 +282,24 @@ func (t *FileTailer) handleFileRotation() error {
 
 // 重新打开文件
 func (t *FileTailer) reOpenFile() error {
-	fmt.Printf("%sFile rotated:%s\n%s", colorYellow, t.filePath, colorReset)
-
+	// 关闭上个文件
 	_ = t.fileHandle.Close()
 	t.fileHandle = nil
 
 	f, err := os.Open(t.filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("reopen file error:%w", err)
 	}
 	t.fileHandle = f
 
 	// 重新设置初始偏移量
-	if _, err := t.fileHandle.Seek(t.seekOffset, t.seekWhence); err != nil {
-		return err
+	offset, err := t.fileHandle.Seek(t.seekOffset, t.seekWhence)
+	if err != nil {
+		return fmt.Errorf("seek file error:%w", err)
 	}
+	t.lastOffset = offset
 
-	// 重新初始文件大小
+	// 重新获取文件大小
 	fi, err := t.fileHandle.Stat()
 	if err != nil {
 		return err
