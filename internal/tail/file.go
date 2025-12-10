@@ -127,6 +127,7 @@ func (t *FileTailer) run() {
 	defer t.wg.Done()
 
 	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
 		select {
