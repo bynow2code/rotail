@@ -76,6 +76,16 @@ func (t *FileTailer) initFile() error {
 	}
 	t.fileHandle = f
 
+	fi, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	t.lastFileSize = fi.Size()
+
+	if fi.IsDir() {
+		return fmt.Errorf("%s is a directory", t.filePath)
+	}
+
 	// 设置初始偏移量
 	offset, err := t.fileHandle.Seek(t.seekOffset, t.seekWhence)
 	if err != nil {
@@ -292,19 +302,19 @@ func (t *FileTailer) reOpenFile() error {
 	}
 	t.fileHandle = f
 
-	// 重新设置初始偏移量
-	offset, err := t.fileHandle.Seek(t.seekOffset, t.seekWhence)
-	if err != nil {
-		return err
-	}
-	t.lastOffset = offset
-
 	// 重新获取文件大小
 	fi, err := t.fileHandle.Stat()
 	if err != nil {
 		return err
 	}
 	t.lastFileSize = fi.Size()
+
+	// 重新设置初始偏移量
+	offset, err := t.fileHandle.Seek(t.seekOffset, t.seekWhence)
+	if err != nil {
+		return err
+	}
+	t.lastOffset = offset
 
 	return nil
 }

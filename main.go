@@ -1,9 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/bynow2code/rotail/internal/tail"
@@ -12,105 +15,91 @@ import (
 var version = "0.0.0-dev"
 
 func main() {
-	fileTailer, err := tail.NewFileTailer("./test.log")
-	if err != nil {
-		fmt.Println(err)
+	file := flag.String("f", "", "File path to tail (e.g. /var/log/app.log)")
+	dir := flag.String("d", "", "Directory path to tail (e.g. /var/log)")
+	ext := flag.String("ext", ".log", "Comma-separated file extensions, default .log (e.g. .log,.txt)")
+	ver := flag.Bool("v", false, "Show version")
+	help := flag.Bool("h", false, "Show help")
+
+	flag.Parse()
+
+	if *help {
+		printHelp()
 		return
 	}
-	defer fileTailer.Close()
 
-	if err := fileTailer.Start(); err != nil {
-		fmt.Println(err)
+	// 版本号
+	if *ver {
+		fmt.Println(version)
 		return
 	}
 
-	go func() {
-		for {
-			select {
-			case line, ok := <-fileTailer.GetLineChan():
-				if !ok {
-					return
-				}
-				fmt.Println(line)
-			case err, ok := <-fileTailer.GetErrorChan():
-				if !ok {
-					return
-				}
-				fmt.Println(err)
-				return
-			}
+	// 文件 tail
+	if *file != "" {
+		t, err := tail.NewFileTailer(*file)
+		if err != nil {
+			fmt.Println("Failed to start file tailer:", err)
+			return
 		}
-	}()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case <-sigCh:
-		fmt.Println("Received stop signal")
+		runTailer(t)
+		return
 	}
 
-	//file := flag.String("f", "", "File path to tail (e.g. /var/log/app.log)")
-	//dir := flag.String("d", "", "Directory path to tail (e.g. /var/log)")
-	//ext := flag.String("ext", ".log", "Comma-separated file extensions, default .log (e.g. .log,.txt)")
-	//ver := flag.Bool("v", false, "Show version")
-	//help := flag.Bool("h", false, "Show help")
-	//
-	//flag.Parse()
-	//if *help {
-	//	flag.PrintDefaults()
-	//	os.Exit(0)
-	//}
-	//
-	//switch {
-	//case *file != "":
-	//	t, err := tail.NewFileTailer(*file)
-	//	if err != nil {
-	//		fmt.Printf("Exited due to error: %ver\n", err)
-	//		return
-	//	}
-	//	runTailer(t)
-	//case *dir != "":
-	//	exts := strings.Split(*ext, ",")
-	//	t, err := tail.NewDir(*dir, tail.WithExt(exts))
-	//	if err != nil {
-	//		fmt.Printf("Exited due to error: %ver\n", err)
-	//		return
-	//	}
-	//	runTailer(t)
-	//case *ver:
-	//	fmt.Println(version)
-	//case *help:
-	//	flag.PrintDefaults()
-	//default:
-	//	flag.PrintDefaults()
-	//}
+	// 目录 tail
+	if *dir != "" {
+		exts := strings.Split(*ext, ",")
+		t, err := tail.NewDirTailer(*dir, tail.WithFileExts(exts))
+		if err != nil {
+			fmt.Println("Failed to start directory tailer:", err)
+			return
+		}
+		runTailer(t)
+		return
+	}
+
+	// 无参数
+	printHelp()
 }
 
+func printHelp() {
+	flag.PrintDefaults()
+}
+
+// 统一管理 Tailer 生命周期
 func runTailer(t tail.Tailer) {
+	var wg sync.WaitGroup
+
+	defer func() {
+		t.Close() // 停止生产端，关闭 channel
+		wg.Wait() // 等消费端退出
+	}()
+
+	// 启动生产端
 	if err := t.Start(); err != nil {
-		fmt.Printf("Exited due to error: %v\n", err)
+		fmt.Printf("Startup error: %v\n", err)
 		return
 	}
 
+	// 启动日志消费者
+	wg.Add(1)
 	go func() {
-		for line := range t.GetLineCh() {
+		defer wg.Done()
+		for line := range t.GetLineChan() {
 			fmt.Println(line)
 		}
 	}()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	// 监听信号和错误
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
-	case <-sigCh:
+	case <-sigChan:
 		fmt.Println("Received stop signal")
-		t.Stop()
-		fmt.Println("Exited via signal")
-	case err, ok := <-t.GetErrCh():
+	case err, ok := <-t.GetErrorChan():
 		if !ok {
 			return
 		}
-		fmt.Printf("Exited due to error: %v\n", err)
+		fmt.Printf("Tailer error: %v\n", err)
 	}
 }
