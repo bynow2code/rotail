@@ -15,6 +15,7 @@ import (
 )
 
 type FileTailer struct {
+	closeOnce    sync.Once
 	filePath     string
 	fileHandle   *os.File
 	fsWatcher    *fsnotify.Watcher
@@ -327,18 +328,20 @@ func (t *FileTailer) GetErrorChan() <-chan error {
 }
 
 func (t *FileTailer) Close() {
-	t.cancel()
-	t.wg.Wait()
+	t.closeOnce.Do(func() {
+		t.cancel()
+		t.wg.Wait()
 
-	close(t.lineChan)
-	close(t.errorChan)
+		close(t.lineChan)
+		close(t.errorChan)
 
-	if t.fsWatcher != nil {
-		_ = t.fsWatcher.Close()
-		t.fsWatcher = nil
-	}
+		if t.fsWatcher != nil {
+			_ = t.fsWatcher.Close()
+			t.fsWatcher = nil
+		}
 
-	if t.fileHandle != nil {
-		_ = t.fileHandle.Close()
-	}
+		if t.fileHandle != nil {
+			_ = t.fileHandle.Close()
+		}
+	})
 }
