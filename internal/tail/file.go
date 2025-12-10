@@ -30,16 +30,16 @@ type FileTailer struct {
 }
 
 // NewFileTailer 创建文件跟踪器
-func NewFileTailer(path string, opts ...FileTailerOption) (*FileTailer, error) {
-	return NewFileTailerWithCtx(context.Background(), path, opts...)
+func NewFileTailer(filePath string, opts ...FileTailerOption) (*FileTailer, error) {
+	return NewFileTailerWithCtx(context.Background(), filePath, opts...)
 }
 
 // NewFileTailerWithCtx 创建带上下文的文件跟踪器
-func NewFileTailerWithCtx(parentCtx context.Context, path string, opts ...FileTailerOption) (*FileTailer, error) {
+func NewFileTailerWithCtx(parentCtx context.Context, filePath string, opts ...FileTailerOption) (*FileTailer, error) {
 	ctx, cancel := context.WithCancel(parentCtx)
 
 	t := &FileTailer{
-		filePath:   path,
+		filePath:   filePath,
 		seekOffset: 0,
 		seekWhence: io.SeekEnd,
 		lineChan:   make(chan string),
