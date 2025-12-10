@@ -213,7 +213,7 @@ const (
 func (t *FileTailer) handleFileTruncation() (fileSizeState, error) {
 	fi, err := t.fileHandle.Stat()
 	if err != nil {
-		return 0, fmt.Errorf("stat file error:%w", err)
+		return 0, err
 	}
 	t.lastFileSize = fi.Size()
 
@@ -225,7 +225,7 @@ func (t *FileTailer) handleFileTruncation() (fileSizeState, error) {
 	case t.lastFileSize < t.lastOffset:
 		fmt.Printf("%sFile truncated:%s\n%s", colorYellow, t.filePath, colorReset)
 		if _, err := t.fileHandle.Seek(0, io.SeekStart); err != nil {
-			return 0, fmt.Errorf("seek file error:%w", err)
+			return 0, err
 		}
 		return fileSizeDecreased, err
 	}
@@ -243,13 +243,13 @@ func (t *FileTailer) readLines() error {
 			if errors.Is(err, io.EOF) {
 				isEOF = true
 			} else {
-				return fmt.Errorf("read file error:%w", err)
+				return err
 			}
 		}
 
 		offset, err := t.fileHandle.Seek(0, io.SeekCurrent)
 		if err != nil {
-			return fmt.Errorf("seek file error:%w", err)
+			return err
 		}
 		t.lastOffset = offset
 
@@ -288,14 +288,14 @@ func (t *FileTailer) reOpenFile() error {
 
 	f, err := os.Open(t.filePath)
 	if err != nil {
-		return fmt.Errorf("reopen file error:%w", err)
+		return err
 	}
 	t.fileHandle = f
 
 	// 重新设置初始偏移量
 	offset, err := t.fileHandle.Seek(t.seekOffset, t.seekWhence)
 	if err != nil {
-		return fmt.Errorf("seek file error:%w", err)
+		return err
 	}
 	t.lastOffset = offset
 
