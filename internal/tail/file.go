@@ -112,7 +112,6 @@ func (t *FileTailer) Start() error {
 	}
 
 	if err := t.initWatcher(); err != nil {
-		_ = t.fileHandle.Close()
 		return err
 	}
 
