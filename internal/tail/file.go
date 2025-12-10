@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -98,7 +97,7 @@ func (t *FileTailer) initWatcher() error {
 	t.fsWatcher = w
 
 	if err = t.fsWatcher.Add(t.filePath); err != nil {
-		return fmt.Errorf("add watcher error:%w", err)
+		return fmt.Errorf("add fsnotify watcher error:%w", err)
 	}
 
 	return nil
@@ -160,7 +159,8 @@ func (t *FileTailer) run() {
 			if !ok {
 				return
 			}
-			log.Println("error:", err)
+			t.errorChan <- err
+			return
 		}
 	}
 }
