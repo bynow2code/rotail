@@ -118,7 +118,7 @@ func (t *DirTailer) Start() error {
 func (t *DirTailer) run() {
 	defer t.wg.Done()
 
-	ticker := time.NewTicker(200 * time.Millisecond)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {

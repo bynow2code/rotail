@@ -131,7 +131,7 @@ func (t *FileTailer) Start() error {
 func (t *FileTailer) run() {
 	defer t.wg.Done()
 
-	ticker := time.NewTicker(200 * time.Millisecond)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
