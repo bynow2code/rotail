@@ -69,6 +69,7 @@ func WithOffset(offset int64, whence int) FileTailerOption {
 	}
 }
 
+// 设置文件
 func (t *FileTailer) initFile() error {
 	f, err := os.Open(t.filePath)
 	if err != nil {
@@ -80,7 +81,6 @@ func (t *FileTailer) initFile() error {
 	if err != nil {
 		return err
 	}
-	t.lastFileSize = fi.Size()
 
 	if fi.IsDir() {
 		return fmt.Errorf("%s is a directory", t.filePath)
@@ -208,7 +208,7 @@ func (t *FileTailer) handleFileResourceChange(event fsnotify.Event) error {
 		return err
 	}
 
-	return t.readLines()
+	return t.readIncrement()
 }
 
 type fileSizeState int
@@ -301,13 +301,6 @@ func (t *FileTailer) reOpenFile() error {
 		return err
 	}
 	t.fileHandle = f
-
-	// 重新获取文件大小
-	fi, err := t.fileHandle.Stat()
-	if err != nil {
-		return err
-	}
-	t.lastFileSize = fi.Size()
 
 	// 重新设置初始偏移量
 	offset, err := t.fileHandle.Seek(t.seekOffset, t.seekWhence)
