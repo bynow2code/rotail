@@ -112,7 +112,7 @@ func (t *FileTailer) initWatcher() error {
 
 // Start 启动文件跟踪器
 func (t *FileTailer) Start() error {
-	fmt.Printf("%sStarting file tailer:%s\n%s", colorGreen, t.filePath, colorReset)
+	fmt.Printf("%sStarting file tailer: %s\n%s", colorGreen, t.filePath, colorReset)
 
 	if err := t.initFile(); err != nil {
 		return err
@@ -197,13 +197,10 @@ func (t *FileTailer) readIncrement() error {
 
 // 处理文件资源变化
 func (t *FileTailer) handleFileResourceChange(event fsnotify.Event) error {
-	fmt.Printf("%sFile changed:%s(%v)\n%s", colorYellow, t.filePath, event.Op, colorReset)
+	fmt.Printf("%sFile changed: preparing to reopen: %s (%v)\n%s", colorYellow, t.filePath, event.Op, colorReset)
 
 	// 等待文件轮转
 	time.Sleep(200 * time.Millisecond)
-
-	fmt.Printf("%sPreparing to reopen the file:%s\n%s", colorYellow, t.filePath, colorReset)
-
 	if err := t.handleFileRotation(); err != nil {
 		return err
 	}
@@ -233,7 +230,7 @@ func (t *FileTailer) handleFileTruncation() (fileSizeState, error) {
 	case t.lastFileSize > t.lastFileSize:
 		return fileSizeIncreased, nil
 	case t.lastFileSize < t.lastOffset:
-		fmt.Printf("%sFile truncated:%s\n%s", colorYellow, t.filePath, colorReset)
+		fmt.Printf("%sFile truncated, read from start: %s\n%s", colorYellow, t.filePath, colorReset)
 		if _, err := t.fileHandle.Seek(0, io.SeekStart); err != nil {
 			return 0, err
 		}

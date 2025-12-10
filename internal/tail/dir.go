@@ -98,7 +98,7 @@ func (t *DirTailer) initWatcher() error {
 
 // Start 启动目录跟踪器
 func (t *DirTailer) Start() error {
-	fmt.Printf("%sStarting dir tailer:%s\n%s", colorGreen, t.dirPath, colorReset)
+	fmt.Printf("%sStarting dir tailer: %s\n%s", colorGreen, t.dirPath, colorReset)
 
 	if err := t.initFile(); err != nil {
 		return err
@@ -220,7 +220,7 @@ func (t *DirTailer) handleFileRotate() error {
 // 处理目录变更
 func (t *DirTailer) handleDirChange(event fsnotify.Event) error {
 	if event.Name == t.dirPath {
-		return fmt.Errorf("directory changed:(%v)", event.Op)
+		return fmt.Errorf("directory changed: (%v)", event.Op)
 	}
 	return nil
 }
