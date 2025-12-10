@@ -93,7 +93,7 @@ func (t *FileTailer) initFile() error {
 func (t *FileTailer) initWatcher() error {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		return fmt.Errorf("new watcher error:%w", err)
+		return fmt.Errorf("new fsnotify watcher error:%w", err)
 	}
 	t.fsWatcher = w
 
