@@ -128,6 +128,7 @@ func (t *FileTailer) ChannelConsumer(lineChan chan<- string, errorChan chan<- er
 					return
 				}
 				errorChan <- err
+				return
 			}
 		}
 	}()

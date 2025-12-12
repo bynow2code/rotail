@@ -80,47 +80,12 @@ func (t *DirTailer) Consumer() error {
 				if !ok {
 					return
 				}
-
 				fmt.Println(line)
 			}
 		}
 	}()
 
 	return nil
-}
-
-// 消费
-func (t *DirTailer) consume(lineChan chan<- string) {
-	defer t.wg.Done()
-
-	for {
-		select {
-
-		case <-t.ctx.Done():
-			// 优雅退出
-			return
-
-		case line, ok := <-t.lineChan:
-			// 文件跟踪器的数据
-			if !ok {
-				return
-			}
-
-			if lineChan != nil {
-				lineChan <- line
-			} else {
-				fmt.Println(line)
-			}
-
-		case err, ok := <-t.errorChan:
-			// 文件跟踪器报错
-			if !ok {
-				return
-			}
-			t.sendError(err)
-			return
-		}
-	}
 }
 
 // 初始化目录
