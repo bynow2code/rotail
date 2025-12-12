@@ -376,6 +376,7 @@ func (t *DirTailer) Close() {
 			t.fsWatcher = nil
 		}
 
+		close(t.lineChan)
 		close(t.errorChan)
 	})
 }
