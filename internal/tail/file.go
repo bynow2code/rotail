@@ -288,7 +288,7 @@ func (t *FileTailer) readOnCreateRenameRemoveEvent(event fsnotify.Event) error {
 	fmt.Printf("%sFile (%v): preparing to reopen: %s \n%s", colorYellow, event.Op, t.filePath, colorReset)
 
 	// 等待文件轮转
-	time.Sleep(10 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// 重新初始化文件
 	if err := t.reOpenFile(); err != nil {

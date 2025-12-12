@@ -85,6 +85,7 @@ func (t *DirTailer) Consumer() error {
 			}
 		}
 	}()
+
 	return nil
 }
 

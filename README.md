@@ -6,106 +6,119 @@
 
 ## Introduction
 
-rotail works like `tail -f` but adds real-time directory log rotation monitoring, automatically following newly created
-log files.
+rotail is an enhanced log monitoring tool similar to the `tail -f` command, but with more powerful features. In addition to real-time monitoring of individual log files, it can intelligently monitor the latest log files in an entire directory, automatically switching to new log files when log rotation occurs, ensuring you don't miss any important information.
 
-## Features
+## Core Features
 
-- Real-time monitoring of single log files
-- Monitor the newest log file in a directory
-    - Automatically handle log rotation
-    - Filter files by custom extensions
-- Support for interrupt signal handling (SIGINT, SIGTERM)
-- Easy-to-use command-line interface
+- 🔍 **Real-time Log Monitoring** - Track changes in individual log files in real-time
+- 📂 **Directory-level Monitoring** - Automatically discover and monitor the latest log files in a directory
+- 🔄 **Smart Rotation Handling** - Automatically switch to new files during log rotation for seamless transition
+- 🎯 **Flexible File Filtering** - Support custom file extension filters
+- ⚡ **Signal Handling** - Gracefully handle SIGINT and SIGTERM interrupt signals
+- 💻 **User-friendly CLI** - Clean and intuitive command-line experience
 
-## Installation
+## Quick Installation
 
-### Method 1: Download prebuilt binaries (recommended)
+### Method 1: One-click Installation Script (Recommended)
 
-Get rotail from GitHub Releases:  
-https://github.com/bynow/rotail/releases/latest
+For Linux and macOS systems:
 
-Linux / macOS:
-
-```bash
+```
 curl -sfL https://raw.githubusercontent.com/bynow2code/rotail/main/install.sh | bash
 ```
 
-Windows: download `rotail-windows-amd64.exe` and run it.
+### Method 2: Manual Download
 
----
+Visit the [GitHub Releases](https://github.com/bynow2code/rotail/releases/latest) page to download the precompiled version suitable for your system:
 
-### Method 2: Install via Go
+- **Windows Users**: Download `rotail-windows-amd64.exe` and rename it to `rotail.exe`
+- **macOS Users**: Download `rotail-darwin-amd64` or `rotail-darwin-arm64`
+- **Linux Users**: Download the corresponding binary file based on your architecture
 
-```bash
-go install github.com/bynow/rotail@latest
+### Verify Installation
+
+After installation, run the following command to verify successful installation:
+
+```
+rotail -v
 ```
 
----
+## Usage Guide
 
-### Verify installation
+### Monitor a Single Log File
 
-```bash
-rotail -h
 ```
-
-## Usage
-
-### Monitor a single file
-
-```bash
 rotail -f /path/to/your/logfile.log
 ```
 
-### Monitor an entire directory
+### Monitor an Entire Directory
 
-```bash
+Automatically monitor the latest log file in a directory:
+
+```
 rotail -d /path/to/your/logdir
 ```
 
-### Specify file extensions
+### Specify File Types
 
-```bash
+Monitor only files with specific extensions:
+
+```
 rotail -d /path/to/your/logdir -ext .log,.txt,.out
 ```
 
-### Show help
+### Get Help Information
 
-```bash
+View all available options:
+
+```
 rotail -h
 ```
 
-## Command Line Options
+## Command Line Arguments
 
-| Option | Description                     | Default |
-|--------|---------------------------------|---------|
-| `-f`   | File path to tail               | None    |
-| `-d`   | Directory path to tail          | None    |
-| `-ext` | Comma-separated file extensions | `.log`  |
-| `-v`   | Show Version                    |  None   |
-| `-h`   | Show help                       | false   |
+| Argument | Description                       | Default    |
+|----------|-----------------------------------|------------|
+| `-f`     | Path to the single file to monitor | None       |
+| `-d`     | Path to the directory to monitor   | None       |
+| `-ext`   | File extension filter (comma-separated) | `.log`    |
+| `-v`     | Display version information        |            |
+| `-h`     | Display help information           | false      |
 
-## Examples
+## Practical Examples
 
-```bash
-# Monitor a single log file
+### Monitor Nginx Access Logs
+
+```
 rotail -f /var/log/nginx/access.log
+```
 
-# Monitor the latest .log files in /var/log directory
+### Monitor Latest .log Files in System Log Directory
+
+```
 rotail -d /var/log
+```
 
-# Monitor .log and .txt files in a specific directory
+### Monitor .log and .txt Files in Application Log Directory
+
+```
 rotail -d /app/logs -ext .log,.txt
 ```
 
-## ⭐ Star this project
+### Monitor a Single File and Pipe to Another Program
 
-If you find rotail useful, please give it a ⭐ on GitHub!
+```
+rotail -f app.log | grep ERROR
+```
 
-## Architecture
+## Support rotail
 
-This project is written in Go.
+If rotail has been helpful in your workflow, we sincerely invite you to support the project. Your engagement directly contributes to ongoing improvements and long-term maintenance:
 
-## License
+1. **Click the ⭐ Star button** in the top-right corner to help others discover rotail
+2. **Share it with your colleagues and friends** who may benefit from it
+3. **Recommend rotail on social media or technical communities** to expand visibility
 
-rotail is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+## Open Source License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
