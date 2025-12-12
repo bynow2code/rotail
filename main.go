@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 
 	"github.com/bynow2code/rotail/internal/tail"
@@ -34,26 +33,15 @@ func main() {
 		return
 	}
 
-	// 文件 tail
+	// 文件跟踪器
 	if *file != "" {
-		t, err := tail.NewFileTailer(*file)
-		if err != nil {
-			fmt.Println("Failed to start file tailer:", err)
-			return
-		}
-		runTailer(t)
+		runFileTailer(*file)
 		return
 	}
 
-	// 目录 tail
+	// 目录跟踪器
 	if *dir != "" {
-		exts := strings.Split(*ext, ",")
-		t, err := tail.NewDirTailer(*dir, tail.WithFileExts(exts))
-		if err != nil {
-			fmt.Println("Failed to start directory tailer:", err)
-			return
-		}
-		runTailer(t)
+		runDirTailer(*dir, *ext)
 		return
 	}
 
@@ -65,41 +53,46 @@ func printHelp() {
 	flag.PrintDefaults()
 }
 
-// 统一管理 Tailer 生命周期
-func runTailer(t tail.Tailer) {
-	var wg sync.WaitGroup
+func runFileTailer(file string) {
+	tailer, err := tail.NewFileTailer(file)
+	if err != nil {
+		fmt.Println("Failed to start file tailer:", err)
+		return
+	}
+	runTailer(tailer)
+}
 
-	defer func() {
-		t.Close() // 停止生产端，关闭 channel
-		wg.Wait() // 等消费端退出
-	}()
+func runDirTailer(dir string, exts string) {
+	fileExts := strings.Split(exts, ",")
+	tailer, err := tail.NewDirTailer(dir, tail.WithFileExts(fileExts))
+	if err != nil {
+		fmt.Println("Failed to start directory tailer:", err)
+		return
+	}
+	runTailer(tailer)
+}
+func runTailer(tailer tail.Tailer) {
+	defer tailer.Close()
 
-	// 启动生产端
-	if err := t.Start(); err != nil {
-		fmt.Printf("Startup error: %v\n", err)
+	// 启动跟踪器生产者
+	if err := tailer.Producer(); err != nil {
+		fmt.Println("Failed to start tailer producer: ", err)
 		return
 	}
 
-	// 启动日志消费者
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for line := range t.GetLineChan() {
-			fmt.Println(line)
-		}
-	}()
+	// 启动跟踪器消费者
+	if err := tailer.Consumer(); err != nil {
+		fmt.Println("Failed to start tailer consumer: ", err)
+		return
+	}
 
-	// 监听信号和错误
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case <-sigChan:
 		fmt.Println("Received stop signal")
-	case err, ok := <-t.GetErrorChan():
-		if !ok {
-			return
-		}
-		fmt.Printf("Tailer error: %v\n", err)
+	case err := <-tailer.GetErrorChan():
+		fmt.Println("Tailer exits on error: ", err)
 	}
 }

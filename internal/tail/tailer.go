@@ -1,8 +1,8 @@
 package tail
 
 type Tailer interface {
-	Start() error
-	Close()
-	GetLineChan() <-chan string
+	Producer() error
+	Consumer() error
 	GetErrorChan() <-chan error
+	Close()
 }

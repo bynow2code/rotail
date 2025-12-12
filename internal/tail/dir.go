@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
-	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -27,17 +26,19 @@ type DirTailer struct {
 	closeOnce  sync.Once
 }
 
+// NewDirTailer 创建目录跟踪器
 func NewDirTailer(dirPath string, opts ...DirTailerOption) (*DirTailer, error) {
 	return NewDirTailerWithCtx(context.Background(), dirPath, opts...)
 }
 
+// NewDirTailerWithCtx 创建带上下文的目录跟踪器
 func NewDirTailerWithCtx(parentCtx context.Context, dirPath string, opts ...DirTailerOption) (*DirTailer, error) {
 	ctx, cancel := context.WithCancel(parentCtx)
 
 	t := &DirTailer{
 		dirPath:   dirPath,
-		lineChan:  make(chan string),
-		errorChan: make(chan error),
+		lineChan:  make(chan string, 10),
+		errorChan: make(chan error, 1),
 		ctx:       ctx,
 		cancel:    cancel,
 	}
@@ -53,7 +54,7 @@ func NewDirTailerWithCtx(parentCtx context.Context, dirPath string, opts ...DirT
 
 type DirTailerOption func(tailer *DirTailer) error
 
-// WithFileExts 设置文件后缀
+// WithFileExts 设置要筛选的文件后缀列表
 func WithFileExts(fileExts []string) DirTailerOption {
 	return func(t *DirTailer) error {
 		t.fileExts = fileExts
@@ -61,224 +62,298 @@ func WithFileExts(fileExts []string) DirTailerOption {
 	}
 }
 
-// 设置文件
+// Consumer 消费者
+func (t *DirTailer) Consumer() error {
+	t.wg.Add(1)
+	go func() {
+		defer t.wg.Done()
+
+		for {
+			select {
+
+			case <-t.ctx.Done():
+				// 优雅退出
+				return
+
+			case line, ok := <-t.lineChan:
+				// 文件跟踪器的数据
+				if !ok {
+					return
+				}
+
+				fmt.Println(line)
+			}
+		}
+	}()
+	return nil
+}
+
+// 消费
+func (t *DirTailer) consume(lineChan chan<- string) {
+	defer t.wg.Done()
+
+	for {
+		select {
+
+		case <-t.ctx.Done():
+			// 优雅退出
+			return
+
+		case line, ok := <-t.lineChan:
+			// 文件跟踪器的数据
+			if !ok {
+				return
+			}
+
+			if lineChan != nil {
+				lineChan <- line
+			} else {
+				fmt.Println(line)
+			}
+
+		case err, ok := <-t.errorChan:
+			// 文件跟踪器报错
+			if !ok {
+				return
+			}
+			t.sendError(err)
+			return
+		}
+	}
+}
+
+// 初始化目录
 func (t *DirTailer) initFile() error {
-	fi, err := os.Stat(t.dirPath)
-	if err != nil {
-		return err
-	}
-
-	if !fi.IsDir() {
-		return fmt.Errorf("%s is not a directory", t.dirPath)
-	}
-
+	// 获取绝对路径
 	absPath, err := filepath.Abs(t.dirPath)
 	if err != nil {
 		return err
 	}
 	t.dirPath = absPath
 
+	// 检查目录
+	fi, err := os.Stat(t.dirPath)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("%s is not a directory", t.dirPath)
+	}
+
 	return nil
 }
 
-// 设置 watcher
+// 初始化 watcher
 func (t *DirTailer) initWatcher() error {
+	// 创建 watcher
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
 	}
 	t.fsWatcher = w
 
-	if err = t.fsWatcher.Add(t.dirPath); err != nil {
-		return err
-	}
-
-	return nil
+	// 添加目录监控
+	return t.fsWatcher.Add(t.dirPath)
 }
 
-// Start 启动目录跟踪器
-func (t *DirTailer) Start() error {
-	fmt.Printf("%sStarting dir tailer: %s\n%s", colorGreen, t.dirPath, colorReset)
+// Producer 生产者
+func (t *DirTailer) Producer() error {
+	fmt.Printf("%sStarting directory tailer: %s\n%s", colorGreen, t.dirPath, colorReset)
 
+	// 初始化目录
 	if err := t.initFile(); err != nil {
 		return err
 	}
 
+	// 初始化 watcher
 	if err := t.initWatcher(); err != nil {
 		return err
 	}
 
+	// 读模式1
+	if err := t.readOnStartProducer(); err != nil {
+		return err
+	}
+
 	t.wg.Add(1)
-	go t.run()
+	go t.produce()
 
 	return nil
 }
 
-// 运行
-func (t *DirTailer) run() {
+// 生产
+func (t *DirTailer) produce() {
 	defer t.wg.Done()
 
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
 	for {
+
 		select {
 		case <-t.ctx.Done():
+			// 优雅退出
 			return
-		case <-ticker.C:
-			if err := t.handleTimerTrigger(); err != nil {
-				t.errorChan <- err
-				return
-			}
+
 		case event, ok := <-t.fsWatcher.Events:
+			// watcher 事件
 			if !ok {
 				return
 			}
 
+			// 事件类型：创建
 			if event.Has(fsnotify.Create) {
-				if err := t.handleDirCreate(event); err != nil {
-					t.errorChan <- err
+				if err := t.readOnCreateEvent(event); err != nil {
+					t.sendError(err)
 					return
 				}
 			}
 
+			// 事件类型：重命名/删除
 			if event.Op&(fsnotify.Rename|fsnotify.Remove) != 0 {
-				if err := t.handleDirChange(event); err != nil {
-					t.errorChan <- err
+				if err := t.readOnRenameRemoveEvent(event); err != nil {
+					t.sendError(err)
 					return
 				}
 			}
+
 		case err, ok := <-t.fsWatcher.Errors:
+			// watcher 错误
 			if !ok {
 				return
 			}
-			t.errorChan <- err
+			t.sendError(err)
 			return
 		}
 	}
 }
 
-var ErrFileNotFound = errors.New("file not found")
-
-// 处理定时器触发
-func (t *DirTailer) handleTimerTrigger() error {
-	return t.handleFileRotate()
-}
-
-// 处理文件创建
-func (t *DirTailer) handleDirCreate(event fsnotify.Event) error {
-	ext := filepath.Ext(event.Name)
-	if !slices.Contains(t.fileExts, ext) {
-		return nil
+// 发送错误
+func (t *DirTailer) sendError(err error) {
+	select {
+	case t.errorChan <- err:
+	default:
 	}
-
-	return t.handleFileRotate()
+	return
 }
 
-// 处理文件旋转
-func (t *DirTailer) handleFileRotate() error {
+// 读模式1
+func (t *DirTailer) readOnStartProducer() error {
 	// 寻找最新文件
-	var fileNotFound bool
 	filePath, err := t.findLatestFile()
 	if err != nil {
-		if errors.Is(err, ErrFileNotFound) {
-			fileNotFound = true
-		} else {
-			return err
-		}
-	}
-	if fileNotFound {
-		return nil
-	}
-
-	var opts []FileTailerOption
-	if t.fileTailer != nil {
-		// 正在 tail 这个文件
-		if t.fileTailer.filePath == filePath {
+		if errors.Is(err, ErrFileNotFoundInDir) {
+			fmt.Printf("%sNo suitable files in directory, waiting...\n%s", colorYellow, colorReset)
 			return nil
 		}
-
-		// 关闭 tail 旧文件
-		t.fileTailer.Close()
-		t.fileTailer = nil
-
-		// 设置初始偏移量
-		opts = append(opts, WithOffset(0, io.SeekStart))
+		return err
 	}
 
-	fileTailer, err := NewFileTailerWithCtx(t.ctx, filePath, opts...)
+	// 创建文件跟踪器
+	fileTailer, err := NewFileTailerWithCtx(t.ctx, filePath)
 	if err != nil {
 		return err
 	}
 	t.fileTailer = fileTailer
 
-	go t.runTailFile()
+	// 启动文件跟踪器生产者
+	if err := t.fileTailer.Producer(); err != nil {
+		return err
+	}
+
+	// 启动文件跟踪器消费者
+	if err := t.fileTailer.ChannelConsumer(t.lineChan, t.errorChan); err != nil {
+		return err
+	}
 
 	return nil
 }
 
-// 处理目录变更
-func (t *DirTailer) handleDirChange(event fsnotify.Event) error {
+func (t *DirTailer) readOnCreateEvent(event fsnotify.Event) error {
+	// 检查目录
+	fi, err := os.Stat(event.Name)
+	if err != nil {
+		return err
+	}
+	if fi.IsDir() {
+		return nil
+	}
+
+	// 检查后缀
+	ext := filepath.Ext(event.Name)
+	if !slices.Contains(t.fileExts, ext) {
+		return nil
+	}
+
+	// 寻找最新文件
+	newFilePath, err := t.findLatestFile()
+	if err != nil {
+		return err
+	}
+
+	// 有正在运行的文件跟踪器
+	if t.fileTailer != nil {
+		// 路径相同
+		if t.fileTailer.filePath == newFilePath {
+			return nil
+		}
+
+		// 路径不同
+		t.fileTailer.Close()
+		t.fileTailer = nil
+	}
+
+	// 创建文件跟踪器
+	fileTailer, err := NewFileTailerWithCtx(t.ctx, newFilePath, WithOffset(0, io.SeekStart), WithImmediateRead())
+	if err != nil {
+		return err
+	}
+	t.fileTailer = fileTailer
+
+	// 启动文件跟踪器生产者
+	if err := t.fileTailer.Producer(); err != nil {
+		return err
+	}
+
+	// 启动文件跟踪器消费者
+	if err := t.fileTailer.ChannelConsumer(t.lineChan, t.errorChan); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *DirTailer) readOnRenameRemoveEvent(event fsnotify.Event) error {
 	if event.Name == t.dirPath {
-		return fmt.Errorf("directory changed: (%v)", event.Op)
+		return fmt.Errorf("directory (%v): %s", event.Op, t.dirPath)
 	}
 	return nil
 }
 
+var ErrFileNotFoundInDir = errors.New("no suitable files found in the directory")
+
 // 寻找最新文件
 func (t *DirTailer) findLatestFile() (string, error) {
+	// 读取目录
 	entries, err := os.ReadDir(t.dirPath)
 	if err != nil {
 		return "", err
 	}
 
+	// 倒序遍历
 	for i := len(entries) - 1; i >= 0; i-- {
 		entry := entries[i]
 
+		// 过滤目录
 		if entry.IsDir() {
 			continue
 		}
 
+		// 过滤非后缀文件
 		ext := filepath.Ext(entry.Name())
 		if slices.Contains(t.fileExts, ext) {
 			return filepath.Join(t.dirPath, entry.Name()), nil
 		}
 	}
 
-	return "", ErrFileNotFound
-}
-
-// 运行文件跟踪器
-func (t *DirTailer) runTailFile() {
-	t.wg.Add(1)
-	defer t.wg.Done()
-
-	if err := t.fileTailer.Start(); err != nil {
-		t.errorChan <- err
-		return
-	}
-
-	for {
-		select {
-		case <-t.ctx.Done():
-			return
-		case line, ok := <-t.fileTailer.GetLineChan():
-			if !ok {
-				return
-			}
-			t.lineChan <- line
-		case err, ok := <-t.fileTailer.GetErrorChan():
-			if !ok {
-				return
-			}
-			t.errorChan <- err
-			return
-		}
-	}
-}
-
-func (t *DirTailer) GetLineChan() <-chan string {
-	return t.lineChan
+	return "", ErrFileNotFoundInDir
 }
 
 func (t *DirTailer) GetErrorChan() <-chan error {
@@ -290,9 +365,6 @@ func (t *DirTailer) Close() {
 		t.cancel()
 		t.wg.Wait()
 
-		close(t.lineChan)
-		close(t.errorChan)
-
 		if t.fileTailer != nil {
 			t.fileTailer.Close()
 			t.fileTailer = nil
@@ -302,5 +374,7 @@ func (t *DirTailer) Close() {
 			_ = t.fsWatcher.Close()
 			t.fsWatcher = nil
 		}
+
+		close(t.errorChan)
 	})
 }
