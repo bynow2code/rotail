@@ -18,7 +18,7 @@ type FileTailer struct {
 	filePath      string
 	fileHandle    *os.File
 	fsWatcher     *fsnotify.Watcher
-	ImmediateRead bool
+	immediateRead bool
 	lastFileSize  int64
 	lastOffset    int64
 	seekOffset    int64
@@ -73,7 +73,7 @@ func WithOffset(offset int64, whence int) FileTailerOption {
 // WithImmediateRead 设置立即读取一次，不等事件到来前
 func WithImmediateRead() FileTailerOption {
 	return func(t *FileTailer) error {
-		t.ImmediateRead = true
+		t.immediateRead = true
 		return nil
 	}
 }
@@ -203,7 +203,7 @@ func (t *FileTailer) produce() {
 	defer t.wg.Done()
 
 	// 判断是否立即读取一次
-	if t.ImmediateRead {
+	if t.immediateRead {
 		if err := t.readLines(); err != nil {
 			t.sendError(err)
 			return
