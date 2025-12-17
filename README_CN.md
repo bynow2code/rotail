@@ -39,7 +39,9 @@ curl -sfL https://raw.githubusercontent.com/bynow2code/rotail/main/install.sh | 
 
 安装完成后，运行以下命令验证是否安装成功：
 
+```
 rotail -v
+```
 
 ## 使用指南
 
