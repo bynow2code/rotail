@@ -55,24 +55,24 @@ jobs:
           # CGO_ENABLED=0: 禁用CGO，生成静态链接的可执行文件（不依赖系统库）
           # -ldflags: 链接时传递的参数，这里将版本号注入到二进制文件中
           # -o: 指定输出文件的路径和名称
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail.run.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-android-arm64 ./main.go
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/internal/run.version.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-android-arm64 ./main.go
 
           # 编译Linux amd64版本（适用于大多数Linux服务器和桌面系统）
           # GOARCH=amd64: 目标CPU架构为x86_64（64位Intel/AMD处理器）
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail.run.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-linux-amd64 ./main.go
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/internal/run.version.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-linux-amd64 ./main.go
 
           # 编译Windows amd64版本（适用于Windows 10/11等64位系统）
           # GOOS=windows: 目标操作系统为Windows
           # 输出文件会自动添加.exe扩展名
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail.run.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-windows-amd64.exe ./main.go
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/internal/run.version.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-windows-amd64.exe ./main.go
 
           # 编译macOS amd64版本（适用于Intel芯片的Mac电脑）
           # GOOS=darwin: 目标操作系统为macOS
-          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail.run.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-macos-amd64 ./main.go
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/internal/run.version.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-macos-amd64 ./main.go
 
           # 编译macOS arm64版本（适用于Apple Silicon芯片的Mac电脑：M1/M2/M3等）
           # GOARCH=arm64: 目标CPU架构为ARM64（Apple Silicon）
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail.run.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-macos-arm64 ./main.go
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/bynow2code/rotail/internal/run.version.version=${{ github.ref_name }}" -o dist/rotail-${{ github.ref_name }}-macos-arm64 ./main.go
 
       # 步骤4：在GitHub上创建Release并上传编译好的文件
       - name: 创建 GitHub Release
