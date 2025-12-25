@@ -29,7 +29,6 @@ type fileTailer struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
-	closeOnce  sync.Once
 }
 
 // RunFileTailer 运行文件跟踪器
@@ -168,6 +167,9 @@ func (ft *fileTailer) runProduce() {
 			_ = ft.file.Close()
 			ft.file = nil
 		}
+
+		close(ft.lines)
+		close(ft.errors)
 	}()
 
 	// 立即读取一次
@@ -406,11 +408,6 @@ func (ft *fileTailer) readLines() error {
 
 // 关闭所有资源
 func (ft *fileTailer) close() {
-	ft.closeOnce.Do(func() {
-		ft.cancel()
-		ft.wg.Wait()
-
-		close(ft.lines)
-		close(ft.errors)
-	})
+	ft.cancel()
+	ft.wg.Wait()
 }

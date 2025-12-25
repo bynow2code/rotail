@@ -24,7 +24,6 @@ type dirTailer struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
-	closeOnce  sync.Once
 }
 
 // RunDirTailer 运行目录跟踪器
@@ -123,11 +122,11 @@ func (dt *dirTailer) initWatcher() error {
 
 // 生产文件数据
 func (dt *dirTailer) producer() error {
-	fmt.Printf("%sStarting directory tailer: %s\n%s", color.Green, dt.dir, color.Reset)
-
 	if err := dt.initFile(); err != nil {
 		return err
 	}
+
+	fmt.Printf("%sStarting directory tailer: %s\n%s", color.Green, dt.dir, color.Reset)
 
 	if err := dt.initWatcher(); err != nil {
 		return err
@@ -152,6 +151,9 @@ func (dt *dirTailer) runProduce() {
 			dt.fileTailer.close()
 			dt.fileTailer = nil
 		}
+
+		close(dt.lines)
+		close(dt.errors)
 	}()
 
 	if err := dt.readOnStartProducer(); err != nil {
@@ -336,11 +338,6 @@ func (dt *dirTailer) findLatestFile() (string, error) {
 
 // 关闭所有资源
 func (dt *dirTailer) close() {
-	dt.closeOnce.Do(func() {
-		dt.cancel()
-		dt.wg.Wait()
-
-		close(dt.lines)
-		close(dt.errors)
-	})
+	dt.cancel()
+	dt.wg.Wait()
 }

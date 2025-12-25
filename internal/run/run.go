@@ -43,11 +43,13 @@ func Run(cfg *Config) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
+	var hadError bool
 	select {
 	case <-sigChan:
-		fmt.Println("Rotail received stop signal, shutting down...")
+		fmt.Println("ℹ️ Received stop signal, shutting down...")
 	case err := <-errors:
-		fmt.Fprintf(os.Stderr, "Rotail exited due to error: %v\n", err)
+		hadError = true
+		fmt.Fprintf(os.Stderr, "❌ Exiting due to error: %v\n", err)
 	}
 
 	cancel()
@@ -60,9 +62,11 @@ func Run(cfg *Config) error {
 
 	select {
 	case <-done:
-		fmt.Println("Rotail graceful shutdown completed.")
+		if !hadError {
+			fmt.Println("✅ Graceful shutdown completed.")
+		}
 	case <-time.After(5 * time.Second):
-		fmt.Println("Rotail shutdown timeout, forcing exit.")
+		fmt.Println("⚠️ Shutdown timed out, forcing exit.")
 	}
 
 	return nil
