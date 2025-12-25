@@ -85,7 +85,7 @@ func newFileTailer(parentCtx context.Context, path string, opts ...fileTailerOpt
 type fileTailerOption func(tailer *fileTailer) error
 
 // 设置初始偏移量
-func withOffset(offset int64, whence int) fileTailerOption {
+func withSeekOffset(offset int64, whence int) fileTailerOption {
 	return func(t *fileTailer) error {
 		t.seekOffset = offset
 		t.seekWhence = whence

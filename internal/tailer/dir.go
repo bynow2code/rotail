@@ -284,7 +284,7 @@ func (dt *dirTailer) readOnCreateEvent(event fsnotify.Event) error {
 		dt.fileTailer = nil
 	}
 
-	fileTailer, err := newFileTailer(dt.ctx, newPath, withOffset(0, io.SeekStart), withImmediate())
+	fileTailer, err := newFileTailer(dt.ctx, newPath, withSeekOffset(0, io.SeekStart), withImmediate())
 	if err != nil {
 		return err
 	}
