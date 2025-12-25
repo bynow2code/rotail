@@ -163,6 +163,7 @@ func (ft *fileTailer) runProduce() {
 			_ = ft.watcher.Close()
 			ft.watcher = nil
 		}
+
 		if ft.file != nil {
 			_ = ft.file.Close()
 			ft.file = nil

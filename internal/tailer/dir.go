@@ -142,14 +142,14 @@ func (dt *dirTailer) producer() error {
 func (dt *dirTailer) runProduce() {
 	defer dt.wg.Done()
 	defer func() {
-		if dt.watcher != nil {
-			_ = dt.watcher.Close()
-			dt.watcher = nil
-		}
-
 		if dt.fileTailer != nil {
 			dt.fileTailer.close()
 			dt.fileTailer = nil
+		}
+
+		if dt.watcher != nil {
+			_ = dt.watcher.Close()
+			dt.watcher = nil
 		}
 
 		close(dt.lines)
