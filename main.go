@@ -10,12 +10,12 @@ import (
 func main() {
 	cfg, err := run.ParseFlags()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid flags: %v\n", err)
+		fmt.Fprintf(os.Stderr, "invalid command-line arguments: %v\n", err)
 		os.Exit(1)
 	}
 
 	if err := run.Run(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "service exited with error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rotail exited due to an error: %v\n", err)
 		os.Exit(1)
 	}
 }
