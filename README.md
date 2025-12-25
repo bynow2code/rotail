@@ -6,7 +6,10 @@
 
 ## Introduction
 
-rotail is an enhanced log monitoring tool similar to the `tail -f` command, but with more powerful features. In addition to real-time monitoring of individual log files, it can intelligently monitor the latest log files in an entire directory, automatically switching to new log files when log rotation occurs, ensuring you don't miss any important information.
+rotail is an enhanced log monitoring tool similar to the `tail -f` command, but with more powerful features. In addition
+to real-time monitoring of individual log files, it can intelligently monitor the latest log files in an entire
+directory, automatically switching to new log files when log rotation occurs, ensuring you don't miss any important
+information.
 
 ## Core Features
 
@@ -29,7 +32,8 @@ curl -sfL https://raw.githubusercontent.com/bynow2code/rotail/main/install.sh | 
 
 ### Method 2: Manual Download
 
-Visit the [GitHub Releases](https://github.com/bynow2code/rotail/releases/latest) page to download the precompiled version suitable for your system:
+Visit the [GitHub Releases](https://github.com/bynow2code/rotail/releases/latest) page to download the precompiled
+version suitable for your system:
 
 - **Windows Users**: Download `rotail-windows-amd64.exe` and rename it to `rotail.exe`
 - **macOS Users**: Download `rotail-darwin-amd64` or `rotail-darwin-arm64`
@@ -77,13 +81,13 @@ rotail -h
 
 ## Command Line Arguments
 
-| Argument | Description                       | Default    |
-|----------|-----------------------------------|------------|
-| `-f`     | Path to the single file to monitor | None       |
-| `-d`     | Path to the directory to monitor   | None       |
-| `-ext`   | File extension filter (comma-separated) | `.log`    |
-| `-v`     | Display version information        |            |
-| `-h`     | Display help information           | false      |
+| Argument | Description                             | Default |
+|----------|-----------------------------------------|---------|
+| `-f`     | Path to the single file to monitor      |         |
+| `-d`     | Path to the directory to monitor        |         |
+| `-ext`   | File extension filter (comma-separated) | `.log`  |
+| `-v`     | Display version information             |         |
+| `-h`     | Display help information                |         |
 
 ## Practical Examples
 
@@ -113,7 +117,8 @@ rotail -f app.log | grep ERROR
 
 ## Support rotail
 
-If rotail has been helpful in your workflow, we sincerely invite you to support the project. Your engagement directly contributes to ongoing improvements and long-term maintenance:
+If rotail has been helpful in your workflow, we sincerely invite you to support the project. Your engagement directly
+contributes to ongoing improvements and long-term maintenance:
 
 1. **Click the ⭐ Star button** in the top-right corner to help others discover rotail
 2. **Share it with your colleagues and friends** who may benefit from it
