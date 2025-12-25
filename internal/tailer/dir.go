@@ -230,7 +230,7 @@ func (dt *dirTailer) readOnStartProducer() error {
 	path, err := dt.findLatestFile()
 	if err != nil {
 		if errors.Is(err, errFileNotFoundInDir) {
-			fmt.Printf("%sNo suitable files found in the directory, waiting…\n\n%s", color.Yellow, color.Reset)
+			fmt.Printf("%sNo suitable files found in the directory, waiting…\n%s", color.Yellow, color.Reset)
 			return nil
 		}
 		return err
