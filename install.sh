@@ -63,5 +63,5 @@ else
     mkdir -p "$(dirname "$TARGET")"
     mv "$TMPFILE" "$TARGET"
     echo "安装完成: $TARGET"
-    echo "请确保 $HOME/bin 在 PATH 中，然后运行: rotail.exe --version"
+    echo "请确保 $HOME/bin 在 PATH 中，然后运行: rotail.exe -v"
 fi
