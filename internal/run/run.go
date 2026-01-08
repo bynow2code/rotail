@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -13,56 +12,44 @@ import (
 )
 
 func Run(cfg *Config) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	var wg sync.WaitGroup
+	done := make(chan struct{})
 	errors := make(chan error, 1)
 
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer close(done)
 
+		var err error
 		if cfg.File != "" {
-			if err := tailer.RunFileTailer(ctx, cfg.File); err != nil {
-				select {
-				case errors <- err:
-				default:
-				}
-			}
-		} else if cfg.Dir != "" {
-			if err := tailer.RunDirTailer(ctx, cfg.Dir, cfg.Extensions); err != nil {
-				select {
-				case errors <- err:
-				default:
-				}
+			err = tailer.RunFileTailer(ctx, cfg.File)
+		} else {
+			err = tailer.RunDirTailer(ctx, cfg.Dir, cfg.Extensions)
+		}
+
+		if err != nil {
+			select {
+			case errors <- err:
+			default:
 			}
 		}
 	}()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	var hadError bool
+	var runErr error
 	select {
-	case <-sigChan:
+	case <-ctx.Done():
 		fmt.Println("ℹ️ Received stop signal, shutting down...")
-	case err := <-errors:
-		hadError = true
-		fmt.Fprintf(os.Stderr, "❌ Exiting due to error: %v\n", err)
+	case runErr = <-errors:
+		fmt.Fprintf(os.Stderr, "❌ Exiting due to error: %v\n", runErr)
+		stop()
+	case <-done:
+		return nil
 	}
-
-	cancel()
-
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
 
 	select {
 	case <-done:
-		if !hadError {
+		if runErr == nil {
 			fmt.Println("✅ Graceful shutdown completed.")
 		}
 	case <-time.After(5 * time.Second):
