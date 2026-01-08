@@ -238,11 +238,11 @@ func (dt *dirTailer) readOnStartProducer() error {
 		return err
 	}
 
-	fileTailer, err := newFileTailer(dt.ctx, path)
+	fTailer, err := newFileTailer(dt.ctx, path)
 	if err != nil {
 		return err
 	}
-	dt.fileTailer = fileTailer
+	dt.fileTailer = fTailer
 
 	if err := dt.fileTailer.producer(); err != nil {
 		return err
@@ -286,11 +286,11 @@ func (dt *dirTailer) readOnCreateEvent(event fsnotify.Event) error {
 		dt.fileTailer = nil
 	}
 
-	fileTailer, err := newFileTailer(dt.ctx, newPath, withSeekOffset(0, io.SeekStart), withImmediate())
+	fTailer, err := newFileTailer(dt.ctx, newPath, withSeekOffset(0, io.SeekStart), withImmediate())
 	if err != nil {
 		return err
 	}
-	dt.fileTailer = fileTailer
+	dt.fileTailer = fTailer
 
 	if err := dt.fileTailer.producer(); err != nil {
 		return err
